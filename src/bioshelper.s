@@ -41,7 +41,6 @@
 
 ; ----------------------------------------------------------------------------
 ; EXTERNAL REFERENCES
-
  
 ; ----------------------------------------------------------------------------
 ;
@@ -435,30 +434,56 @@ waitOneThirdOfRasterLine:
     ret             ; 11 (=78)
 
 ; -------------------------------------------------------------
-; Counts downwards. The impossible waits are:
-;   1-11, 13, 15, 16 and 18
-;
-;
+; Counts downwards.
 ; IN:       HL current
 ; OUT:      DE next
-; MODIFIES: 
+; MODIFIES: AF,DE
 ; returns 0 when there are none
 getNextPossibleDelay:
 
-    ld      bc,#12   ;
+    ld      a,h
+    or      a
+    jr      nz,one_lower ; > 255 is: -= 1
 
-    or      a         ; 
-    sbc     hl,bc
-    add     hl,bc
+    ld      a,l
+    cp      #20
+    jr      nc,one_lower ; >=20 is: -= 1
 
-    jp      c,none_possible
-    
-     TODO!
-
-none_possible:
-    ld      de,#0
+    ld      d,#0            ; otherwise (0-19); look up value below
+    push    hl
+    ld      hl,#mini_table
+    addAtoHL
+    ld      e,(hl)
+    pop     hl
     ret
 
+one_lower::
+    ld      d,h
+    ld      e,l
+    dec     de
+    ret
+
+mini_table: ; (given a previous delay, which is the next, valid, lower delay)
+    .db     0       ; 0
+    .db     0       ; 1
+    .db     0       ; 2
+    .db     0       ; 3
+    .db     0       ; 4
+    .db     0       ; 5
+    .db     0       ; 6
+    .db     0       ; 7
+    .db     0       ; 8
+    .db     0       ; 9
+    .db     0       ;10
+    .db     0       ;11
+    .db     0       ;12
+    .db     12      ;13
+    .db     12      ;14
+    .db     14      ;15
+    .db     14      ;16
+    .db     14      ;17
+    .db     17      ;18
+    .db     17      ;19
 
 ; -------------------------------------------------------------
 ; IN:       IY: pointer to struct
@@ -469,7 +494,7 @@ setVDPParams:
     push    hl
     ld      e,0(iy)
     ld      d,1(iy)
-    call    setVDPCmdParamsNI_asm:: ; E: width, D: height (MODIFIES: AF, C, DE, HL)
+    call    setVDPCmdParamsNI_asm ; E: width, D: height (MODIFIES: AF, C, DE, HL)
     pop     hl
     pop     de
     pop     bc
@@ -504,32 +529,40 @@ testVDP:
 ; MODIFIES:
 ; u16 runTestCombo(RunCombo* p); HL
 _runTestCombo::
-    ld      b,#3                ; random number 3 sets the times we do this
+    ; in a,(0x2e)
+    ld      b,#1                ; random number sets the times we do this
+    ex      de,hl
+    ld      iyl,e 
+    ld      iyh,d               ; put pointer to struct in IY
+
+	ld		a, #2
+    vdpWriteReg 15              ; set status reg #2
+
 mer:
     push    bc
     call    runTestCombo_inner
     pop     bc 
     djnz    mer
 
-    ret
-
-runTestCombo_inner:
+	xor     a
+    vdpWriteReg 15              ; set status reg #0
 
     ex      de,hl
-    ld      iyl,e 
-    ld      iyh,d               ; put pointer to struct in IY
+    ret                         ; SDCC needs return in DE
+
+runTestCombo_inner::            ; IY: Pointer to paramsreturns in HL, the best delay found
 
     ; wait?
     xor     a
     ld      b,6(iy)
     or      b
     jr      z,loopr_start
-wloop:
+wloop::
     call    waitOneThirdOfRasterLine
     djnz    wloop
 
     ; the real loop
-loopr_start:
+loopr_start::
     ld      c,2(iy)             ; the command in C
     ld      l,4(iy)
     ld      h,5(iy)             ; HL: Current Greenlit delay
@@ -541,26 +574,27 @@ loopr_start:
     or      b
     ret     z                   ; if NO iterations, we just return. this is wrong
 
-loopr:
+loopr::
     call    setVDPParams
     call    testVDP             ; C = Cmd, HL = delay. Result in A
     rr      a                   ; CE bit goes into C, but if all we are ZERO here, something is wrong
-    jp      z, bail             ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
+    jp      z,bail              ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
     jp      nc,job_was_done
 
-job_was_not_done:               ; if not done, we must try until all attempts are done 
+job_was_not_done::               ; if not done, we must try until all attempts are done 
     djnz    loopr               ; just try again with same values
-
     jp      bail                ; if we get here, we are out of attempts.
 
-job_was_done:
+job_was_done::
     ld      b,3(iy)             ; success, so restart testing but try one lower
     ld      h,d
-    ld      l,e                 ; sets hl = de
+    ld      l,e                 
     call    getNextPossibleDelay
-    jr      loopr
+    ld      a,d
+    or      e
+    jr      nz,loopr            ; if next possible delay == 0, we bail
 
-bail:
+bail::
     ld      4(iy),l             ; updating this struct value in case we do new runs
     ld      5(iy),h             ; 
 

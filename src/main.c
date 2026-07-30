@@ -121,7 +121,7 @@ extern void     print(u8* szMessage);
 extern u8       waitForKey(void);
 extern bool     userOutputsToScreen(void);
 
-extern void     runTestCombo(RunCombo* p, u16* paResultx2);
+extern u16      runTestCombo(RunCombo* p);
 extern u8       getInitialDelayNI(u8 uVDP_CMD);
 
 // from vdp.s
@@ -232,7 +232,7 @@ u8                      g_uFreqVariant;         // NTSC or PAL
 u8                      g_auSysStr[MAX_SYS_LEN];// name of system
 // u16                     g_anResult[RASTER_LOCATION_COUNT][ORIENTATION_COUNT][CONDITION_COUNT][NUM_TESTS];
 
-u16                     g_anStartDelays[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];
+u16                     g_anDelays[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];
 
 
 // ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ void establishInitialDelays(void)
             for(u8 v = 0; v < NUM_VERTICALS; v++)
             {
                 setVDPCmdParamsNI(aHORZ_LEN[u], aVERT_LEN[v]);
-                g_anStartDelays[c][u][v] = (u16)getInitialDelayNI(aEXECUTE_CMD[c]) * INITIAL_LOOP_CYCLES;
+                g_anDelays[c][u][v] = (u16)getInitialDelayNI(aEXECUTE_CMD[c]) * INITIAL_LOOP_CYCLES;
             }
         }
     }
@@ -284,35 +284,33 @@ void establishInitialDelays(void)
 }
 
 // ---------------------------------------------------------------------------
-// u16 runTestSingle(u8 uOrientation, u8 nTest, bool bUseCPU, bool bVBlank)
-u16 runTestSingle(u8 uTest)
+//
+void runTest(void)
 {
-    // PREPARE PARAMS
-    // disableInterrupt();
-    // setVDPCmdParamsNI(8,8);
-    // enableInterrupt();
+    RunCombo oParams;
 
-
-
-    vdpScreenEnabled(false);
-
-
-
-
-
-
-
-    // u16 uCMD_status = dispatch_vdp_test(aEXECUTE_CMD[0], 33);
-
-
-
-    // runTestCombo();
-
-    vdpScreenEnabled(true);
-
+    oParams.uIterations = 3;
+    oParams.uFirstWait = 4; // one-third-line's
     
-    // return uCMD_status;
-    return 0;
+    disableInterrupt();
+
+    for(u8 c = 0; c < NUM_TESTS; c++)
+    {
+        oParams.uCmd = aEXECUTE_CMD[c];
+        for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+        {
+            oParams.uW = aHORZ_LEN[u];
+            for(u8 v = 0; v < NUM_VERTICALS; v++)
+            {
+                oParams.uH = aVERT_LEN[v];
+                oParams.nStartDelay = g_anDelays[c][u][v];
+                g_anDelays[c][u][v] = runTestCombo(&oParams);
+            }
+        }
+    }
+    break();
+
+    enableInterrupt();
 }
 
 // ---------------------------------------------------------------------------
@@ -322,12 +320,9 @@ void runTests(void)
 
     establishInitialDelays();
 
-    runTestSingle(0);
+    runTest();
 
-    // for(u8 uOrientation = 0; uOrientation < ORIENTATION_COUNT; uOrientation++)
-    //     for(u8 n = 0; n < NUM_TESTS; n++)
-    //         for(u8 v = 0; v < RASTER_LOCATION_COUNT; v++)
-    //             g_anResult[v][uOrientation][n][uCondition] = runTestSingle(uOrientation, n, uCondition >= NORMAL_CPU, v == VBLANK);
+    vdpScreenEnabled(true);
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +480,7 @@ u8 main(char** argv, u8 argc)
     // ---------------------------------------------
     // READY! Set conditions for tests and run tests
     vdpSpritesEnabled(true);
-    vdpScreenEnabled(true);
+
     runTests();
 
 

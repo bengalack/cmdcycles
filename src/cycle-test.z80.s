@@ -173,7 +173,7 @@ _dispatch_vdp_test::
 ;         C  = VDP write value (Command byte written to port 0x9B)
 ; Output: A  = VDP read value  (Status byte read from 0x99)
 
-dispatch_vdp_test:
+dispatch_vdp_test::
 	ld a,h
 	or a
 	jr nz,dynamic_loop
@@ -249,28 +249,28 @@ loop_pad_table:
 
 ; DIRECT STUBS (N < 48)
 
-stub_invalid:
+stub_invalid::
 	ld a,#0; added by bengalack (0 is an invalid S#2 value)
 	ret
 
-stub_12:
+stub_12::
 	out (0x9B),a
-	in a,(0x99)	; 12
+	in a,(0x99)	; 12	- THIS ONE IS TOO FAST for the VDP (15 minimum)
 	ret
 
-stub_14:
+stub_14::
 	ld c,#0x99
 	out (0x9B),a
-	in a,(c)	; 14
+	in a,(c)	; 14	- THIS ONE IS TOO FAST for the VDP (15 minimum)
 	ret
 
-stub_17:
+stub_17::
 	out (0x9B),a
 	delay5
 	in a,(0x99)	; 12 + 5 = 17
 	ret
 
-stub_19:
+stub_19::
 	out (0x9B),a
 	delay7
 	in a,(0x99)	; 12 + 7 = 19
@@ -282,26 +282,26 @@ stub_20:
 	in a,(0x99)	; 12 + 8 = 20
 	ret
 
-stub_21:
+stub_21::
 	ld c,#0x99
 	out (0x9B),a
 	delay7
 	in a,(c)	; 14 + 7 = 21
 	ret
 
-stub_22:
+stub_22::
 	out (0x9B),a
 	delay10
 	in a,(0x99)	; 12 + 10 = 22
 	ret
 
-stub_23:
+stub_23::
 	out (0x9B),a
 	delay11
 	in a,(0x99)	; 12 + 11 = 23
 	ret
 
-stub_24:
+stub_24::
 	out (0x9B),a
 	delay12
 	in a,(0x99)	; 12 + 12 = 24
@@ -313,7 +313,7 @@ stub_25:
 	in a,(0x99)	; 12 + 13 = 25
 	ret
 
-stub_26:
+stub_26::
 	out (0x9B),a
 	delay14
 	in a,(0x99)	; 12 + 14 = 26
@@ -325,85 +325,85 @@ stub_27:
 	in a,(0x99)	; 12 + 15 = 27
 	ret
 
-stub_28:
+stub_28::
 	out (0x9B),a
 	delay16
 	in a,(0x99)	; 12 + 16 = 28
 	ret
 
-stub_29:
+stub_29::
 	out (0x9B),a
 	delay17
 	in a,(0x99)	; 12 + 17 = 29
 	ret
 
-stub_30:
+stub_30::
 	out (0x9B),a
 	delay18
 	in a,(0x99)	; 12 + 18 = 30
 	ret
 
-stub_31:
+stub_31::
 	out (0x9B),a
 	delay19
 	in a,(0x99)	; 12 + 19 = 31
 	ret
 
-stub_32:
+stub_32::
 	out (0x9B),a
 	delay20
 	in a,(0x99)	; 12 + 20 = 32
 	ret
 
-stub_33:
+stub_33::
 	out (0x9B),a
 	delay21
 	in a,(0x99)	; 12 + 21 = 33
 	ret
 
-stub_34:
+stub_34::
 	out (0x9B),a
 	delay22
 	in a,(0x99)	; 12 + 22 = 34
 	ret
 
-stub_35:
+stub_35::
 	out (0x9B),a
 	delay23
 	in a,(0x99)	; 12 + 23 = 35
 	ret
 
-stub_36:
+stub_36::
 	out (0x9B),a
 	delay24
 	in a,(0x99)	; 12 + 24 = 36
 	ret
 
-stub_37:
+stub_37::
 	out (0x9B),a
 	delay25
 	in a,(0x99)	; 12 + 25 = 37
 	ret
 
-stub_38:
+stub_38::
 	out (0x9B),a
 	delay26
 	in a,(0x99)	; 12 + 26 = 38
 	ret
 
-stub_39:
+stub_39::
 	out (0x9B),a
 	delay27
 	in a,(0x99)	; 12 + 27 = 39
 	ret
 
-stub_40:
+stub_40::
 	out (0x9B),a
 	delay28
 	in a,(0x99)	; 12 + 28 = 40
 	ret
 
-stub_41:
+stub_41::
 	out (0x9B),a
 	delay29
 	in a,(0x99)	; 12 + 29 = 41
@@ -415,31 +415,31 @@ stub_42:
 	in a,(0x99)	; 12 + 30 = 42
 	ret
 
-stub_43:
+stub_43::
 	out (0x9B),a
 	delay31
 	in a,(0x99)	; 12 + 31 = 43
 	ret
 
-stub_44:
+stub_44::
 	out (0x9B),a
 	delay32
 	in a,(0x99)	; 12 + 32 = 44
 	ret
 
-stub_45:
+stub_45::
 	out (0x9B),a
 	delay33
 	in a,(0x99)	; 12 + 33 = 45
 	ret
 
-stub_46:
+stub_46::
 	out (0x9B),a
 	delay34
 	in a,(0x99)	; 12 + 34 = 46
 	ret
 
-stub_47:
+stub_47::
 	out (0x9B),a
 	delay35
 	in a,(0x99)	; 12 + 35 = 47

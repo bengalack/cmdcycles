@@ -18,3 +18,16 @@
 	out 	(VDPPORT1),a
 .endm
 
+;-------------------------
+; Modifies: AF, HL
+; Unsigned
+; This macro must never include parameters
+; This is the fastest possible way to add an 8 bit to 16 bit: 23 cycles
+;-------------------------
+.macro addAtoHL ?noparametero
+	ADD 	A, L
+	LD 		L, A
+	JR 		NC, noparametero
+	INC 	H
+noparametero:
+.endm
