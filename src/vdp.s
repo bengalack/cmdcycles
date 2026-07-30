@@ -226,7 +226,7 @@ _setVRAMAddress::
 ; -----------------------------------------------------------------------------
 ; Does everything at (256-w,256-h) in page 0 => same place in page 1
 ; We pass the planned command, but we do NOT execute it
-; MODIFIES: AF, BC, DE, HL
+; MODIFIES: AF, C, DE, HL
 ; void setVDPCmdParamsNI(u8 w, u8 h); A, L 
 _setVDPCmdParamsNI::
 
@@ -234,6 +234,7 @@ _setVDPCmdParamsNI::
     ld      e,a
     ld      d,l
 
+setVDPCmdParamsNI_asm:: ; call from asm using E: width, D: height
     ; Plan: Put NXL in E, NYL in D, SXL in H, SYL in L
 
 	ld    	a,#32				; Set "Stream mode"

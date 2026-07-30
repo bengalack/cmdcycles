@@ -423,22 +423,148 @@ lp:                     ; each loop is 33 cycles
     ret
 
 ; -------------------------------------------------------------
+; Wait one third of a line (227.5/3 = almost 78 cycles)
+; MODIFIES: Nothing!
+waitOneThirdOfRasterLine:
+    
+    ; calling this  ; 18
+    push    af      ; 12
+    jr      .+2    ; 13
+    jr      .+2    ; 13
+    pop     af      ; 11
+    ret             ; 11 (=78)
+
+; -------------------------------------------------------------
+; Counts downwards. The impossible waits are:
+;   1-11, 13, 15, 16 and 18
+;
+;
+; IN:       HL current
+; OUT:      DE next
+; MODIFIES: 
+; returns 0 when there are none
+getNextPossibleDelay:
+
+    ld      bc,#12   ;
+
+    or      a         ; 
+    sbc     hl,bc
+    add     hl,bc
+
+    jp      c,none_possible
+    
+     TODO!
+
+none_possible:
+    ld      de,#0
+    ret
+
+
+; -------------------------------------------------------------
+; IN:       IY: pointer to struct
+; MODIFIES: AF
+setVDPParams:
+    push    bc
+    push    de
+    push    hl
+    ld      e,0(iy)
+    ld      d,1(iy)
+    call    setVDPCmdParamsNI_asm:: ; E: width, D: height (MODIFIES: AF, C, DE, HL)
+    pop     hl
+    pop     de
+    pop     bc
+
+    ret
+
+; -------------------------------------------------------------
+testVDP:
+    push    bc
+    push    de
+    push    hl
+    call    dispatch_vdp_test ; C = Cmd, HL = delay. Result in A
+    pop     hl
+    pop     de
+    pop     bc
+    ret
+
+; -------------------------------------------------------------
 ; Called in EI, runs in DI, returns in EI. Assumes screen disabled.
-; 
-; 
-; Will do X amounts of tests 
-; 
-; 
+; If value proves to work. we will try one value below, at least
+; <x> amount of times
 ; IN:
-;    
+;    typedef struct {
+;        u8                      uW;            0
+;        u8                      uH;            1
+;        u8                      uCmd;          2
+;        u8                      uIterations;   3
+;        u16                     nStartDelay;   4
+;        u8                      uFirstWait;    6
+;    } RunCombo;
 ; OUT:
 ; MODIFIES:
-; 
-;
-;
-; void runTestCombo(RunCombo* p, u16* paResultx2); HL, DE
+; u16 runTestCombo(RunCombo* p); HL
 _runTestCombo::
+    ld      b,#3                ; random number 3 sets the times we do this
+mer:
+    push    bc
+    call    runTestCombo_inner
+    pop     bc 
+    djnz    mer
 
+    ret
+
+runTestCombo_inner:
+
+    ex      de,hl
+    ld      iyl,e 
+    ld      iyh,d               ; put pointer to struct in IY
+
+    ; wait?
+    xor     a
+    ld      b,6(iy)
+    or      b
+    jr      z,loopr_start
+wloop:
+    call    waitOneThirdOfRasterLine
+    djnz    wloop
+
+    ; the real loop
+loopr_start:
+    ld      c,2(iy)             ; the command in C
+    ld      l,4(iy)
+    ld      h,5(iy)             ; HL: Current Greenlit delay
+    ld      e,l
+    ld      d,h                 ; DE: Current Attempting delay
+    ld      b,3(iy)             ; the initial number of iterations per try
+
+    xor     a
+    or      b
+    ret     z                   ; if NO iterations, we just return. this is wrong
+
+loopr:
+    call    setVDPParams
+    call    testVDP             ; C = Cmd, HL = delay. Result in A
+    rr      a                   ; CE bit goes into C, but if all we are ZERO here, something is wrong
+    jp      z, bail             ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
+    jp      nc,job_was_done
+
+job_was_not_done:               ; if not done, we must try until all attempts are done 
+    djnz    loopr               ; just try again with same values
+
+    jp      bail                ; if we get here, we are out of attempts.
+
+job_was_done:
+    ld      b,3(iy)             ; success, so restart testing but try one lower
+    ld      h,d
+    ld      l,e                 ; sets hl = de
+    call    getNextPossibleDelay
+    jr      loopr
+
+bail:
+    ld      4(iy),l             ; updating this struct value in case we do new runs
+    ld      5(iy),h             ; 
+
+    ret
 
     
 

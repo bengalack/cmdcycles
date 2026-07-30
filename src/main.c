@@ -263,19 +263,6 @@ void initVarsAndRig(void)
 }
 
 // ---------------------------------------------------------------------------
-// wait one third of a line (207.5/3 = 69 cycles)
-void wait(void) __naked __preserves_regs(b,c,d,e,h,l,iyl,iyh)
-{
-__asm
-    ex (sp),hl  ; 20
-    ex (sp),hl  ; 20
-    rr a        ; 10 
-    rl a        ; 10 
-    ret         ; 9
-__endasm;
-}
-
-// ---------------------------------------------------------------------------
 //
 void establishInitialDelays(void)
 {

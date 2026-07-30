@@ -250,6 +250,7 @@ loop_pad_table:
 ; DIRECT STUBS (N < 48)
 
 stub_invalid:
+	ld a,#0; added by bengalack (0 is an invalid S#2 value)
 	ret
 
 stub_12:
