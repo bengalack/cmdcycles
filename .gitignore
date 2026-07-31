@@ -17,5 +17,6 @@ _command2.com
 _msxdos.sys
 _msxdos2.sys
 dska/*.txt
+dska/*.md
 
 .vscode/**
