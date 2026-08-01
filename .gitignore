@@ -19,4 +19,6 @@ _msxdos2.sys
 dska/*.txt
 dska/*.md
 
+temp/**
+
 .vscode/**
