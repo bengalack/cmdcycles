@@ -515,7 +515,7 @@ testVDP:
 ; -------------------------------------------------------------
 ; Called in EI, runs in DI, returns in EI. Assumes screen disabled.
 ; If value proves to work. we will try one value below, at least
-; <x> amount of times
+; <x> amount of times. Stop when <x> attempts all fail (busy).
 ; IN:
 ;    typedef struct {
 ;        u8                      uW;            0
@@ -530,7 +530,10 @@ testVDP:
 ; u16 runTestCombo(RunCombo* p); HL
 _runTestCombo::
     ; in a,(0x2e)
-    ld      b,#1                ; random number sets the times we do this
+
+    ; ld      b,#1                ; random number sets the times we do this
+    ld      a,(_g_uOuterIterations)
+    ld      b,a
     ex      de,hl
     ld      iyl,e 
     ld      iyh,d               ; put pointer to struct in IY
@@ -538,10 +541,13 @@ _runTestCombo::
 	ld		a, #2
     vdpWriteReg 15              ; set status reg #2
 
+    ; ld      c,#1
+
 mer:
     push    bc
     call    runTestCombo_inner
     pop     bc 
+    ; inc     c
     djnz    mer
 
 	xor     a
@@ -557,10 +563,13 @@ runTestCombo_inner::            ; IY: Pointer to paramsreturns in HL, the best d
     ld      b,6(iy)
     or      b
     jr      z,loopr_start
+    ; ld      a,c
+    ; add     b                   ; TODO FOX THIS
+    ; ld      b,a                 ; this makes delays increase for each round
 wloop::
     call    waitOneThirdOfRasterLine
     djnz    wloop
-
+  
     ; the real loop
 loopr_start::
     ld      c,2(iy)             ; the command in C
@@ -578,10 +587,10 @@ loopr::
     call    setVDPParams
     call    testVDP             ; C = Cmd, HL = delay. Result in A
     rr      a                   ; CE bit goes into C, but if all we are ZERO here, something is wrong
-    jp      z,bail              ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
+    jr      z,bail              ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
     jp      nc,job_was_done
 
-job_was_not_done::               ; if not done, we must try until all attempts are done 
+job_was_not_done::              ; if not done, we must try until all attempts are done 
     djnz    loopr               ; just try again with same values
     jp      bail                ; if we get here, we are out of attempts.
 
@@ -600,7 +609,24 @@ bail::
 
     ret
 
-    
+; -------------------------------------------------------------
+; Wild guess, if this really works.
+; IN:       -
+; OUT:      A - bool
+; MODIFIES: AF
+; bool hasT976xEngine(void)
+_hasT976xEngine::
+
+    in      a, (0xF4)           ; Read internal T9769 status register
+    cp      #0xFF               ; Is it unmapped / floating open bus?
+    jr      z,nothing_here
+
+    ld      a,#1                ; yes, it is a T976x engine
+    ret
+
+nothing_here:
+    xor     a                   ; Yamaha (S3527/S1985) or discrete ASIC
+    ret
 
 
 

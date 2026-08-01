@@ -1,7 +1,6 @@
 // ---------------------------------------------------------------------------
 // Assumptions:
 //  * We start in DOS, hence 0x0038 already contains 0xC3 (jp)
-//  * There are no active line (or other non-VBLANK-) interrupts enabled
 //
 // Notes:
 //  * There is no support for global initialisation of RAM variables in this config
@@ -30,6 +29,7 @@
 #include <stdio.h>      // herein be sprintf
 #include <string.h>     // memcpy/memset/strcmp
 #include <stdbool.h>
+#include <stdlib.h>     // atoi
 
 // Typedefs & defines --------------------------------------------------------
 //
@@ -62,18 +62,13 @@
 #define LOGICAL_OP_TEOR     0b1011 // if SC=0 then DC=DC else DC=SCxDC+SCxDC
 #define LOGICAL_OP_TNOT     0b1100 // if SC=0 then DC=DC else DC=SC
 
+// #define NUM_TESTS           2
 #define NUM_TESTS           5
 #define NUM_HORIZONTALS     8
 #define NUM_VERTICALS       8
 #define INITIAL_LOOP_CYCLES 33
 
 #define SCREEN_MODE         8 // 5? 8?
-
-// enum raster_location { VBLANK, ACTIVE_AREA, RASTER_LOCATION_COUNT };
-// enum orientation { LANDSCAPE, PORTRAIT, ORIENTATION_COUNT };
-// enum condition { NORMAL, NO_SPRITES, NO_SCREEN, NORMAL_CPU, NO_SCREEN_CPU, CONDITION_COUNT };
-// enum freq_variant { NTSC, PAL, FREQ_COUNT };
-// enum line_variant { NORMAL192, EXTENDED212, LINE_VARIANT_COUNT };
 
 typedef signed char         s8;
 typedef unsigned char       u8;
@@ -82,7 +77,7 @@ typedef unsigned short      u16;
 typedef signed long         s32;
 typedef unsigned long       u32;
 
-#define MAX_SYS_LEN         28
+#define MAX_SYS_LEN         (61+1)
 
 // -------------------------------------------------------------------------
 // typedef union {
@@ -120,6 +115,8 @@ extern void     customISR(void);
 extern void     print(u8* szMessage);
 extern u8       waitForKey(void);
 extern bool     userOutputsToScreen(void);
+// extern bool     hasT976xEngine(void);
+
 
 extern u16      runTestCombo(RunCombo* p);
 extern u8       getInitialDelayNI(u8 uVDP_CMD);
@@ -127,63 +124,98 @@ extern u8       getInitialDelayNI(u8 uVDP_CMD);
 // from vdp.s
 extern void     setVDPCmdParamsNI(u8 w, u8 h);
 extern void     executeCmdWithPreppedParamsNI(u8 uCmd);
-extern void     waitForVDPCmd(void);
-extern u16      countWrittenPixelsNI(u16 nNumPixels); // Assume NI
 extern bool     getPALRefreshRate(void);
 extern void     setPALRefreshRate(bool bEnabled);
-extern void     setVRAMAddress(u8 uBitCodes, u16 nVRAMAddress);
 extern void     vdpSpritesEnabled(bool bEnabled);
 extern void     vdpScreenEnabled(bool bEnabled);
 extern void     vdpSet212Lines(bool b212);
 extern void     vdpEnableLineInterruptNI(bool bEnable);
 extern void     vdpSetInterruptLine(u8 uLine);
+extern u8       getVDPModel(void);
 
 // from cycle-test.z80.s
 extern u8       dispatch_vdp_test(u8 uVDP_CMD, u16 nTargetDelay); // returns CMD status after wait (bit 0 is set if busy)
 
+// from vdpwaitasm.s
+extern u16      measureVDPCommandsInOneFrame(void);
+
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]       = "2.0";
+const u8                g_szVersion[]       = "1.0";
 const u8                g_szErrorMSX[]      = "MSX2 or higher is required";
-const u8                g_szTopLine[]       = "VDPCMDX v%s. screen 8, %s lines, %dHz%s, %s\r\n";
-                                            //"                             " // 29 chars (turbo r)
-const u8                g_szFullLine[]      = "-------------------------------------------------------------------------------\r\n";
-const u8                g_szHeader1[]       = "                   NORMAL   |   NO SPR   |   NO SCR   | NORMAL+CPU | NO SCR+CPU\r\n";
-// const u8                g_szHeader2[]       = " # OPERATION     THIS  REAL | THIS  REAL | THIS  REAL | THIS  REAL | THIS  REAL\r\n";
-const u8                g_szHeader2[]       = " # OPERATION     THIS  %s | THIS  %s | THIS  %s | THIS  %s | THIS  %s\r\n";
-const u8                g_szLastwords[]     = "1-5:landscape, 6-10:portrait, first 10:raster beam in VBLANK, last 10:ACTIVE ";
-const u8                g_szResultLine[]    = "%2d %s    %5hu %5ld |%5hu %5ld |%5hu %5ld |%5hu %5ld |%5hu %5ld\r\n";
-const u8                g_szREAL[]          = "REAL";
-const u8                g_szDIFF[]          = "DIFF";
+
+const u8                g_szTopLine1[]      = "cmdcycle v%s - %s  \r\n"; // markdown needs two spaces at end of line to force line break
+const u8                g_szTopLine2[]      = "* VDP detected: %s%s. Screen %d. Screen off. (-i:%d -o:%d -w:%d)\r\n";
+const u8                g_szTopLine3[]      = "* Result data on this T976x based system have a +1 cycle included\r\n";
+const u8                g_szEmptyLine[]     = "\r\n";
+//                                          = "                                                                               "; // 79!
+const u8                g_szHeader1[]       = "| %-15s    | %d    | %d    | %d    | %d    | %d    | %d    | %d    | %d    |\r\n";
+const u8                g_szHeader2[]       = "|--------------------|------|------|------|------|------|------|------|------|\r\n";
+const u8                g_szResultLine[]    = "| %d                  | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu |\r\n";
                                           //"                             " // 29 chars (turbo r)
-const u8                g_szHelptext[]      = "Usage:vdpcmdx.com [opt][sys]\r\n"
+const u8                g_szHelptext[]      = "Usage: cmdcycle [opt][sys]\r\n"
                                             "\r\n"
-                                            "Counts pixels handled by the\r\n"
-                                            "VDP CMD Engine in one frame.\r\n"
-                                            "Output is written to stdout.\r\n"
-                                            "Unless output is redirected,\r\n"
-                                            "program exits in width 80.\r\n"
+                                            "Measure the duration of VDP\r\n"
+                                            "command in MSX Z80 cycles.\r\n"
+                                            "Output format is markdown.\r\n"
+                                            "Use 80 char width. Written\r\n"
+                                            "to stdout unless redirected.\r\n"
                                             "\r\n"
                                             "Version: %s\r\n"
                                             "\r\n"
                                             "Options (opt):\r\n"
                                             " -h Show this help message\r\n"
                                             // " -5 Screen 5 (default: 8)\r\n"
-                                            " -p PAL (default: current)\r\n"
-                                            " -n NTSC (default: current)\r\n"
-                                            " -l 212 lines (default: 192)\r\n"
-                                            " -d Show data as diff vs REAL\r\n"
+                                            " -o n Outer loops(6)\r\n"
+                                            " -i n Inner loops(255)\r\n"
+                                            " -w n Init 69-cycle waits(1)\r\n"
                                             "\r\n"
                                             "sys: Show sys name in report\r\n";
 
+const u8* const         aVDP_NAME[32] =
+                        {
+                             "V9938"
+                            ,"<unknown>"
+                            ,"V9958"
+                            ,"V9968"
+                            ,"V9978"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                            ,"<unknown>"
+                        };
+
 const u8* const         aTEST_NAME[NUM_TESTS] = \
                         {
-                             "Copy LMMM"
-                            ,"Copy HMMM"
-                            ,"Copy YMMM"
-                            ,"Fill HMMV"
-                            ,"Fill LMMV"
+                             "Copy: LMMM-TEOR"
+                            ,"Copy: HMMM"
+                            ,"Copy: YMMM"
+                            ,"Fill: HMMV"
+                            ,"Fill: LMMV"
                             // ,"Line     "
                         };
 
@@ -226,11 +258,14 @@ const u8 const          aEXECUTE_CMD[NUM_TESTS] = \
 u8                      g_auBuffer[ 256 ];      // temp/general buffer here to avoid stack explosion
 void* __at(0x0039)      g_pInterrupt;           // We assume that 0x0038 already holds 0xC3 (JP) in dos mode at startup
 void*                   g_pInterruptOrg;
-u8                      g_uFreqVariantOrg;      // NTSC or PAL
-u8                      g_uFreqVariant;         // NTSC or PAL
+
+u8                      g_uVDPModel;
+u8                      g_uInnerIterations;
+u8                      g_uOuterIterations;
+u8                      g_uStartWaits;
+bool                    g_bHasT976xEngine;
 
 u8                      g_auSysStr[MAX_SYS_LEN];// name of system
-// u16                     g_anResult[RASTER_LOCATION_COUNT][ORIENTATION_COUNT][CONDITION_COUNT][NUM_TESTS];
 
 u16                     g_anDelays[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];
 
@@ -253,13 +288,25 @@ void restoreOriginalISR(void)
 }
 
 // ---------------------------------------------------------------------------
+// Must only be called when tR runs in z80 mode, normal ROM/RAM.
+// Approximation; if 1 extra cycle, we say that we have a T976x engine
+void detectT976xEngine(void)
+{
+    u16 nCmds = measureVDPCommandsInOneFrame();
+    u16 nComparableNumber = getPALRefreshRate()? (0x948-1) : (0x7C4-1); // setting a delta of 1 cycle to avoid false negatives
+    g_bHasT976xEngine = !(nCmds >= nComparableNumber); // adding 10 cycles 
+}
+
+// ---------------------------------------------------------------------------
 void initVarsAndRig(void)
 {
     strcpy(g_auSysStr,"<system/model name not set>");
 
-    // g_uFreqVariantOrg = getPALRefreshRate()? PAL : NTSC;
-    // g_uFreqVariant = g_uFreqVariantOrg;
-    // memset(g_anResult, 0, sizeof(g_anResult));
+    g_uVDPModel = getVDPModel();
+
+    g_uInnerIterations = 255;
+    g_uOuterIterations = 6;
+    g_uStartWaits = 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -289,9 +336,11 @@ void runTest(void)
 {
     RunCombo oParams;
 
-    oParams.uIterations = 3;
-    oParams.uFirstWait = 4; // one-third-line's
+    oParams.uIterations = g_uInnerIterations;
+    oParams.uFirstWait = g_uStartWaits; // one-third-line's
     
+    halt(); // We need a common starting point for comparing numbers
+
     disableInterrupt();
 
     for(u8 c = 0; c < NUM_TESTS; c++)
@@ -308,7 +357,7 @@ void runTest(void)
             }
         }
     }
-    break();
+    // break();
 
     enableInterrupt();
 }
@@ -326,72 +375,85 @@ void runTests(void)
 }
 
 // ---------------------------------------------------------------------------
+// Outputs markdown (easy to paste into github or other markdown viewers)
 void printReport(void)
 {
-    // sprintf(g_auBuffer,
-    //         g_szTopLine,
-    //         g_szVersion,
-    //         b212Set? "212" : "192",
-    //         g_uFreqVariant==PAL ? 50 : 60,
-    //         (!bPALSet && !bNTSCSet) ? " (detected)" : "",
-    //         g_auSysStr
-    //        );
+    u8* szT976x = g_bHasT976xEngine ? " (T976x)" : "";
 
-    // print(g_auBuffer);
+    // Top words first ------------------------
+    sprintf(g_auBuffer,
+            g_szTopLine1,
+            g_szVersion,
+            g_auSysStr
+           );
 
-    // print(g_szHeader1);
+    print(g_auBuffer);
 
-    // const u8* p = bDiffMode? g_szDIFF : g_szREAL;
-    // sprintf(g_auBuffer, g_szHeader2, p, p, p, p, p);
-    // print(g_auBuffer);
+    sprintf(g_auBuffer,
+            g_szTopLine2,
+            aVDP_NAME[g_uVDPModel],
+            szT976x,
+            SCREEN_MODE,
+            g_uInnerIterations,
+            g_uOuterIterations,
+            g_uStartWaits
+           );
 
-    // print(g_szFullLine);
+    print(g_auBuffer);
 
+    if(g_bHasT976xEngine)
+    {
+        sprintf(g_auBuffer,
+                g_szTopLine3
+            );
+        print(g_auBuffer);
+    }
 
-    // s32 lShowNumber[CONDITION_COUNT];
+    print(g_szEmptyLine);
 
-    // u8 uLineVariant = b212Set? EXTENDED212 : NORMAL192;
+    // Table top second -----------------------
 
-    // for(u8 r = 0; r<RASTER_LOCATION_COUNT; r++)
-    // {
-    //     u8 uLine = 1;
+    u16 nAdd = g_bHasT976xEngine ? 1 : 0;
 
-    //     for(u8 o = 0; o < ORIENTATION_COUNT; o++)
-    //     {
-    //         for(u8 t = 0; t < NUM_TESTS; t++)
-    //         {
-    //             for(u8 c = 0; c < CONDITION_COUNT; c++) // set the correct number
-    //             {
-    //                 if(bDiffMode)
-    //                     lShowNumber[c] = (s32)(g_anResult[r][o][t][c]) - (s32)(aTARGETS[uLineVariant][r][g_uFreqVariant][o][t][c]);
-    //                 else
-    //                     lShowNumber[c] = (s32)(aTARGETS[uLineVariant][r][g_uFreqVariant][o][t][c]);
-    //             }
+    for(u8 t = 0; t < NUM_TESTS; t++)
+    {
+        sprintf(g_auBuffer,
+                g_szHeader1,
+                aTEST_NAME[t],
+                aHORZ_LEN[0],
+                aHORZ_LEN[1],
+                aHORZ_LEN[2],
+                aHORZ_LEN[3],
+                aHORZ_LEN[4],
+                aHORZ_LEN[5],
+                aHORZ_LEN[6],
+                aHORZ_LEN[7]
+               );
 
-    //             sprintf(g_auBuffer,
-    //                     g_szResultLine,
-    //                     uLine,
-    //                     aTEST_NAME[t],
-    //                     g_anResult[r][o][t][NORMAL],
-    //                     lShowNumber[NORMAL],
-    //                     g_anResult[r][o][t][NO_SPRITES],
-    //                     lShowNumber[NO_SPRITES],
-    //                     g_anResult[r][o][t][NO_SCREEN],
-    //                     lShowNumber[NO_SCREEN],
-    //                     g_anResult[r][o][t][NORMAL_CPU],
-    //                     lShowNumber[NORMAL_CPU],
-    //                     g_anResult[r][o][t][NO_SCREEN_CPU],
-    //                     lShowNumber[NO_SCREEN_CPU]
-    //                 );
+        print(g_auBuffer);
+        print(g_szHeader2);
 
-    //             print(g_auBuffer);
-    //             uLine++;
-    //         }
-    //     }
-    // }
+        // Table data -----------------------------
+        for(u8 v = 0; v < NUM_VERTICALS; v++)
+        {
+            sprintf(g_auBuffer,
+                    g_szResultLine,
+                    aVERT_LEN[v],
+                    g_anDelays[t][0][v] + nAdd,
+                    g_anDelays[t][1][v] + nAdd,
+                    g_anDelays[t][2][v] + nAdd,
+                    g_anDelays[t][3][v] + nAdd,
+                    g_anDelays[t][4][v] + nAdd,
+                    g_anDelays[t][5][v] + nAdd,
+                    g_anDelays[t][6][v] + nAdd,
+                    g_anDelays[t][7][v] + nAdd
+                );
 
-    // print(g_szFullLine);
-    // print(g_szLastwords);
+            print(g_auBuffer);
+        }
+
+        print(g_szEmptyLine);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -415,13 +477,61 @@ u8 main(char** argv, u8 argc)
     {
         for(u8 n=0; n < argc; n++)
         {
+            s16 iVal;
+
             if(strcmp(argv[n], "-h") == 0 || strcmp(argv[n], "--help") == 0)
             {
                 printHelp();
                 return 0;
             }
-            else if(strcmp(argv[n], "-p") == 0)
+            else if(strcmp(argv[n], "-i") == 0)
             {
+                if(++n >= argc)
+                {
+                    print("ERROR:Missing value for -i");
+                    return 1;
+                }
+
+                iVal = atoi(argv[n]);
+
+                if((iVal < 1 ) || (iVal > 255))
+                {
+                    print("ERROR:Value for -i must be in range 1-255");
+                    return 1;
+                }
+                g_uInnerIterations = (u8)iVal;
+            }
+            else if(strcmp(argv[n], "-o") == 0)
+            {
+                if(++n >= argc)
+                {
+                    print("ERROR:Missing value for -o");
+                    return 1;
+                }
+
+                iVal = atoi(argv[n]);
+                if((iVal < 1) || (iVal > 255))
+                {
+                    print("ERROR:Value for -o must be in range 1-255");
+                    return 1;
+                }
+                g_uOuterIterations = (u8)iVal;
+            }
+            else if(strcmp(argv[n], "-w") == 0)
+            {
+                if(++n >= argc)
+                {
+                    print("ERROR:Missing value for -w");
+                    return 1;
+                }
+
+                iVal = atoi(argv[n]);
+                if((iVal < 0) || (iVal > 255))
+                {
+                    print("ERROR:Value for -w must be in range 0-255");
+                    return 1;
+                }
+                g_uStartWaits = (u8)iVal;
             }
             else
             {
@@ -454,7 +564,7 @@ u8 main(char** argv, u8 argc)
         if(uCPU != 0)
         {
             sOrgCPU = (s8)uCPU;
-            changeCPU(0); // 0=Z80 (ROM) mode, 1=R800 ROM  mode, 2=R800 DRAM mode
+            changeCPU(0); // 0=Z80 (ROM) mode, 1=R800 ROM mode, 2=R800 DRAM mode
         }
     }
 
@@ -467,15 +577,17 @@ u8 main(char** argv, u8 argc)
         }
     }
 
+    vdpSet212Lines(false); // just to make sure
+    disableInterrupt();
+    vdpEnableLineInterruptNI(false); // to be sure
+    enableInterrupt();
+    detectT976xEngine(); // only to be called i z80 mode and no line interrupts
+
     bool hasScreenOutput = userOutputsToScreen();
 
     setCustomISR(); 
 
     u8 uPrevScrMode = changeMode(SCREEN_MODE);
-
-    vdpSet212Lines(false); // just to make sure
-    // vdpSetInterruptLine(0); // 
-    vdpEnableLineInterruptNI(false); // to be sure
 
     // ---------------------------------------------
     // READY! Set conditions for tests and run tests

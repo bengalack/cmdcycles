@@ -189,40 +189,6 @@ setup_done2:
     ei
     ret
 
-; ----------------------------------------------------------------------------
-; Enable VDP port #98 for start writing at address (A&3)DE 
-; IN:       A:  Bits: 0W0000UU, W = Write, U means Upper VRAM address(bit 17-18)
-;           DE: VRAM address, 16 lowest bits
-; MODIFIES: AF, B, DE
-; setVRAMAddress(u8 uBitCodes, u16 nVRAMAddress);
-_setVRAMAddress::
-
-    ld      b, a
-    and     #3                      ; first bits
-
-	rlc     d
-	rla
-	rlc     d
-	rla
-	srl     d
-	srl     d
-
-    di
-	vdpWriteReg 14
-
-	ld      a, e                    ; set bits 0-7
-	out     (VDPPORT1), a
-
-    ld      a, b                    ; prepare write flag in b
-    and     #0b01000000
-    ld      b, a   
-
-	ld      a, d                    ; set bits 8-13
-	or      b                       ; + write access via bit 6?
-	out     (VDPPORT1), a       
-    ei
-    ret
-
 ; -----------------------------------------------------------------------------
 ; Does everything at (256-w,256-h) in page 0 => same place in page 1
 ; We pass the planned command, but we do NOT execute it
@@ -304,21 +270,23 @@ _executeCmdWithPreppedParamsNI::
     ret
 
 ;-------------------------
-; Modifies: AF
-; Wait for VDP-commands. No parameter should be given
-; void waitForVDPCmd(void);
+; Modifies: AF,B
+; u8 getVDPModel(void);
 ;-------------------------
-_waitForVDPCmd::
-	di
-	ld	a,#2
-    vdpWriteReg 15              ;select status register 2
+_getVDPModel::
 
-	ei					        ; always happens AFTER next command
+	di
+	ld	a,#1
+    vdpWriteReg 15              ;select status register 1
+
 	in	a,(VDPPORT1)
-	and #1
-	jp	nz, _waitForVDPCmd      ; as this one allows interrupts, the interrupt will set another status reg, so we need to re-set it
-    
+	and #0b00111110
+    rra
+    ld b,a    
+
 	xor a
     vdpWriteReg 15              ; restore 0 as selected status reg
+    ei
 
+    ld a,b
     ret
