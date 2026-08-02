@@ -96,6 +96,14 @@ typedef struct {
     u8                      uFirstWait;
 } RunCombo;
 
+typedef struct {
+    u16                     nYear;      // 1980-
+    u8                      uMonth;     // 0-11
+    u8                      uDay;       // 0-30
+    u8                      uHours;     // 0-23
+    u8                      uMinutes;   // 0-59
+    u8                      uSeconds;   // 0-59
+} DateTime;
 
 // Declarations --------------------------------------------------------------
 //
@@ -115,7 +123,7 @@ extern void     customISR(void);
 extern void     print(u8* szMessage);
 extern u8       waitForKey(void);
 extern bool     userOutputsToScreen(void);
-// extern bool     hasT976xEngine(void);
+extern void     getTime(DateTime* pDateTime);
 
 
 extern u16      runTestCombo(RunCombo* p);
@@ -123,7 +131,7 @@ extern u8       getInitialDelayNI(u8 uVDP_CMD);
 
 // from vdp.s
 extern void     setVDPCmdParamsNI(u8 w, u8 h);
-extern void     executeCmdWithPreppedParamsNI(u8 uCmd);
+// extern void     executeCmdWithPreppedParamsNI(u8 uCmd);
 extern bool     getPALRefreshRate(void);
 extern void     setPALRefreshRate(bool bEnabled);
 extern void     vdpSpritesEnabled(bool bEnabled);
@@ -142,7 +150,7 @@ extern u16      measureVDPCommandsInOneFrame(void);
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]       = "1.0";
+const u8                g_szVersion[]       = "0.6";
 const u8                g_szErrorMSX[]      = "MSX2 or higher is required";
 
 const u8                g_szTopLine1[]      = "cmdcycle v%s - %s  \r\n"; // markdown needs two spaces at end of line to force line break
@@ -153,7 +161,12 @@ const u8                g_szEmptyLine[]     = "\r\n";
 const u8                g_szHeader1[]       = "| %-15s    | %d    | %d    | %d    | %d    | %d    | %d    | %d    | %d    |\r\n";
 const u8                g_szHeader2[]       = "|--------------------|------|------|------|------|------|------|------|------|\r\n";
 const u8                g_szResultLine[]    = "| %d                  | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu |\r\n";
-                                          //"                             " // 29 chars (turbo r)
+const u8                g_szSumLine[]       = "Sum cycles: %d  \r\n";
+const u8                g_szTotalLine[]     = "Grand total cycles: %lu  \r\n";
+const u8                g_szDurationTest[]  = "Duration test:  %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
+const u8                g_szDurationPrint[] = "Duration print: %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
+
+//"                             " // 29 chars (turbo r)
 const u8                g_szHelptext[]      = "Usage: cmdcycle [opt][sys]\r\n"
                                             "\r\n"
                                             "Measure the duration of VDP\r\n"
@@ -250,7 +263,7 @@ const u8 const          aEXECUTE_CMD[NUM_TESTS] = \
                             ,VDPCMD_YMMM
                             ,VDPCMD_HMMV
                             ,VDPCMD_LMMV | LOGICAL_OP_TOR   // just random logical op  (which does not become 0)
-                            // ,VDPCMD_LINE | LOGICAL_OP_EOR   // just random logical op (which does not become 0)
+                            // ,VDPCMD_LINE | LOGICAL_OP_EOR   // just random logical op
                         };
 
 // RAM variables -------------------------------------------------------------
@@ -264,6 +277,9 @@ u8                      g_uInnerIterations;
 u8                      g_uOuterIterations;
 u8                      g_uStartWaits;
 bool                    g_bHasT976xEngine;
+DateTime                g_oTimestamp0;
+DateTime                g_oTimestamp1;
+DateTime                g_oTimestamp2;
 
 u8                      g_auSysStr[MAX_SYS_LEN];// name of system
 
@@ -339,9 +355,9 @@ void runTest(void)
     oParams.uIterations = g_uInnerIterations;
     oParams.uFirstWait = g_uStartWaits; // one-third-line's
     
-    halt(); // We need a common starting point for comparing numbers
+    // halt(); // We need a common starting point for comparing numbers
 
-    disableInterrupt();
+    // disableInterrupt();
 
     for(u8 c = 0; c < NUM_TESTS; c++)
     {
@@ -359,7 +375,7 @@ void runTest(void)
     }
     // break();
 
-    enableInterrupt();
+    // enableInterrupt();
 }
 
 // ---------------------------------------------------------------------------
@@ -403,9 +419,7 @@ void printReport(void)
 
     if(g_bHasT976xEngine)
     {
-        sprintf(g_auBuffer,
-                g_szTopLine3
-            );
+        sprintf(g_auBuffer, g_szTopLine3);
         print(g_auBuffer);
     }
 
@@ -414,8 +428,9 @@ void printReport(void)
     // Table top second -----------------------
 
     u16 nAdd = g_bHasT976xEngine ? 1 : 0;
+    u32 ulSum = 0;
 
-    for(u8 t = 0; t < NUM_TESTS; t++)
+    for(u8 t = 0; t < arraysize(aTEST_NAME); t++)
     {
         sprintf(g_auBuffer,
                 g_szHeader1,
@@ -433,9 +448,14 @@ void printReport(void)
         print(g_auBuffer);
         print(g_szHeader2);
 
+        u16 nSum = 0;
+
         // Table data -----------------------------
-        for(u8 v = 0; v < NUM_VERTICALS; v++)
+        for(u8 v = 0; v < arraysize(aVERT_LEN); v++)
         {
+            for(u8 u = 0; u < arraysize(aHORZ_LEN); u++)
+                nSum += g_anDelays[t][u][v] + nAdd;
+
             sprintf(g_auBuffer,
                     g_szResultLine,
                     aVERT_LEN[v],
@@ -452,8 +472,16 @@ void printReport(void)
             print(g_auBuffer);
         }
 
+        ulSum += (u32)nSum;
+
+        print(g_szEmptyLine);
+        sprintf(g_auBuffer, g_szSumLine,nSum);
+        print(g_auBuffer);
         print(g_szEmptyLine);
     }
+
+    sprintf(g_auBuffer, g_szTotalLine,ulSum);
+    print(g_auBuffer);    
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +489,17 @@ void printHelp(void)
 {
     sprintf(g_auBuffer, g_szHelptext, g_szVersion);
     print(g_auBuffer);
+}
+
+// ---------------------------------------------------------------------------
+void calcDuration(DateTime* p1, DateTime* p2, DateTime* pDuration)
+{
+    u32 lSecondsStart = (u32)(p1->nYear-1980) * 365ul * 24ul * 60ul * 60ul + (u32)p1->uMonth * 30ul * 24ul * 60ul * 60ul + (u32)p1->uDay * 24ul * 60ul * 60ul + (u32)p1->uHours * 60ul * 60ul + (u32)p1->uMinutes * 60ul + (u32)p1->uSeconds;
+    u32 lSecondsEnd =   (u32)(p2->nYear-1980) * 365ul * 24ul * 60ul * 60ul + (u32)p2->uMonth * 30ul * 24ul * 60ul * 60ul + (u32)p2->uDay * 24ul * 60ul * 60ul + (u32)p2->uHours * 60ul * 60ul + (u32)p2->uMinutes * 60ul + (u32)p2->uSeconds;
+    u32 lSecondsDuration = lSecondsEnd - lSecondsStart;
+
+    pDuration->uMinutes = (u8)(lSecondsDuration / 60);
+    pDuration->uSeconds = (u8)(lSecondsDuration % 60);
 }
 
 // ---------------------------------------------------------------------------
@@ -593,8 +632,9 @@ u8 main(char** argv, u8 argc)
     // READY! Set conditions for tests and run tests
     vdpSpritesEnabled(true);
 
+    getTime(&g_oTimestamp0);
     runTests();
-
+    getTime(&g_oTimestamp1);
 
     // ----------------------------------
     // Start cleanup before returning to DOS
@@ -610,15 +650,29 @@ u8 main(char** argv, u8 argc)
         changeMode(uPrevScrMode);
     }
 
-    // ----------------------------------
-    // Show summary
-    printReport();
-
     if(sOrgCPU != -1)
         changeCPU(sOrgCPU);
 
     if(bRestoreTurbo)
         enableTurbo(true);
+
+    // ----------------------------------
+    // Show summary
+    printReport();
+
+    // ----------------------------------
+    // Show duration of test and print
+    getTime(&g_oTimestamp2);
+
+    DateTime oDuration = {0,0,0,0,0,0};
+
+    calcDuration(&g_oTimestamp0, &g_oTimestamp1, &oDuration);
+    sprintf(g_auBuffer, g_szDurationTest, oDuration.uMinutes, oDuration.uSeconds);
+    print(g_auBuffer);
+
+    calcDuration(&g_oTimestamp1, &g_oTimestamp2, &oDuration);
+    sprintf(g_auBuffer,g_szDurationPrint,oDuration.uMinutes,oDuration.uSeconds);
+    print(g_auBuffer);
 
     return 0;
 }

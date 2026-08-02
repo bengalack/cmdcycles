@@ -13,34 +13,28 @@
 ; ----------------------------------------------------------------------------
 ; LOCAL CONSTANTS
 
-    BIOS_CHPUT  .equ 0x00A2
-    CALSLT      .equ 0x001C
-    RDSLT       .equ 0x000C
-    EXPTBL      .equ 0xFCC1
+    BIOS_CHPUT      .equ 0x00A2
+    CALSLT          .equ 0x001C
+    RDSLT           .equ 0x000C
+    EXPTBL          .equ 0xFCC1
 
-    INIPLT      .equ 0x0141
-    RSTPLT      .equ 0x0145
-    BDOS        .equ 0x0005             ; "Basic Disk Operating System"
-    BDOS_CONOUT .equ 0x02               ; DOS Function 02h (_CONOUT), char in E reg
-    ; BDOS_STROUT .equ 9                  ;.string output
-    BDOS_DOSVER .equ 0x6F
-    BDOS_IOCTL  .equ 0x4B
+    BDOS            .equ 0x0005             ; "Basic Disk Operating System"
+    BDOS_CONOUT     .equ 0x02               ; DOS Function 02h (_CONOUT), char in E reg
+    BDOS_DOSVER     .equ 0x6F
+    BDOS_IOCTL      .equ 0x4B
+    BDOS_GETDATE    .equ 0x2A
+    BDOS_GETTIME    .equ 0x2C
 
-    CHGMOD      .equ 0x005F             ; BIOS routine used to initialize the screen
-    LINL40      .equ 0xF3AE             ; 40 or 80
-    SCRMOD      .equ 0xFCAF             ; 
-
-    CHGCPU      .equ 0x0180             ; tame that turbo please
-    GETCPU      .equ 0x0183
-    CHGET       .equ 0x009F
-
-    ; NMI         .equ 0x0066             ; subrom stuff
-    ; EXTROM      .equ 0x015f             ; subrom stuff
-    ; H_NMI       .equ 0xfdd6             ; subrom stuff
-
+    CHGMOD          .equ 0x005F             ; BIOS routine used to initialize the screen
+    LINL40          .equ 0xF3AE             ; 29/30/31... or 80
+    SCRMOD          .equ 0xFCAF             ; 
+    
+    CHGCPU          .equ 0x0180             ; tame that turbo please
+    GETCPU          .equ 0x0183
+    CHGET           .equ 0x009F
 
 ; ----------------------------------------------------------------------------
-; EXTERNAL REFERENCES
+; EXTERNAL REFERENCES (allowing all/any using the -g flag)
  
 ; ----------------------------------------------------------------------------
 ;
@@ -65,6 +59,58 @@ _customISR::
 
     pop		af
     ei
+    ret
+
+; ----------------------------------------------------------------------------
+;  typedef struct {
+;     u16 nYear;    // 0 - 1980-
+;     u8  uMonth;   // 2 - 0-11
+;     u8  uDay;     // 3 - 0-30
+;     u8  uHours;   // 4 - 0-23
+;     u8  uMinutes; // 5 - 0-59
+;     u8  uSeconds; // 6 - 0-59
+; } DateTime;
+; IN:       HL - pointer to DateTime object
+; OUT:      -
+; RETURNS:  Indirectly. The input parameter data is filled with the current date and time.
+; MODIFIES: ? (BIOS...)
+; void getTime(DateTime* pDateTime);
+_getTime::
+
+    push    ix
+    push    hl
+    pop     iy
+
+    ; --- Read Date ---
+
+    ld      c,#BDOS_GETDATE
+    call    BDOS            ; Returns:
+                            ;   HL = Year (e.g., 2026)
+                            ;   D  = Month (1-12)
+                            ;   E  = Day (1-31)
+                            ;   A  = Day of week (0=Sun, 1=Mon...6=Sat)
+
+    dec     d
+    dec     e
+
+    ld      0(iy),l
+    ld      1(iy),h
+    ld      2(iy),d
+    ld      3(iy),e
+
+    ; --- Read Time ---
+    ld      c,#BDOS_GETTIME
+    call    BDOS            ; Returns:
+                            ;   H  = Hours (0-23)
+                            ;   L  = Minutes (0-59)
+                            ;   D  = Seconds (0-59)
+                            ;   E  = 0
+
+    ld      4(iy),h
+    ld      5(iy),l
+    ld      6(iy),d
+
+    pop     ix
     ret
 
 ; ----------------------------------------------------------------------------
@@ -345,55 +391,6 @@ _setLineWidth::
     ld     (LINL40),a
     ret
 
-; ; ----------------------------------------------------------------------------
-; ; CALSUB - from: https://map.grauw.nl/sources/callbios.php
-; ;
-; ; In: IX = address of routine in MSX2 SUBROM
-; ;     AF, HL, DE, BC = parameters for the routine
-; ;
-; ; Out: AF, HL, DE, BC = depending on the routine
-; ;
-; ; Changes: IX, IY, AF', BC', DE', HL'
-; ;
-; ; Call MSX2 subrom from MSXDOS. Should work with all versions of MSXDOS.
-; ;
-; ; Notice: NMI hook will be changed. This should pose no problem as NMI is
-; ; not supported on the MSX at all.
-; ;
-; CALSUB:
-;     exx
-;     ex      af, af'       ; store all registers
-;     ld      hl, #EXTROM
-;     push    hl
-;     ld      hl, #0xC300
-;     push    hl           ; push NOP ; JP EXTROM
-;     push    ix
-;     ld      hl, #0x21DD
-;     push    hl           ; push LD IX,<entry>
-;     ld      hl, #0x3333
-;     push    hl           ; push INC SP; INC SP
-;     ld      hl, #0
-;     add     hl, sp        ; HL = offset of routine
-;     ld      a, #0xC3
-;     ld      (H_NMI), a
-;     ld      (H_NMI + 1), hl ; JP <routine> in NMI hook
-;     ex      af, af'
-;     exx                 ; restore all registers
-;     ld      ix, #NMI
-;     ld      iy, (EXPTBL - 1)
-;     call    CALSLT       ; call NMI-hook via NMI entry in ROMBIOS
-;                         ; NMI-hook will call SUBROM
-;     exx
-;     ex      af, af'       ; store all returned registers
-;     ld      hl, #10
-;     add     hl, sp
-;     ld      sp, hl        ; remove routine from stack
-;     ex      af, af'
-;     exx                 ; restore all returned registers
-;     ret
-
-
-
 ; -------------------------------------------------------------
 ; IN:       A - VDP command to be sent to port 0x9B
 ; OUT:      A - number of 33-cycle iterations
@@ -506,6 +503,7 @@ testVDP:
     push    bc
     push    de
     push    hl
+    ex      de,hl ; test with DE (forget current HL)
     call    dispatch_vdp_test ; C = Cmd, HL = delay. Result in A
     pop     hl
     pop     de
@@ -513,7 +511,7 @@ testVDP:
     ret
 
 ; -------------------------------------------------------------
-; Called in EI, runs in DI, returns in EI. Assumes screen disabled.
+; Assumes screen disabled.
 ; If value proves to work. we will try one value below, at least
 ; <x> amount of times. Stop when <x> attempts all fail (busy).
 ; IN:
@@ -538,38 +536,51 @@ _runTestCombo::
     ld      iyl,e 
     ld      iyh,d               ; put pointer to struct in IY
 
-	ld		a, #2
-    vdpWriteReg 15              ; set status reg #2
-
-    ; ld      c,#1
+    ld      c,#0
 
 mer:
     push    bc
+    di
     call    runTestCombo_inner
     pop     bc 
-    ; inc     c
+    inc     c
     djnz    mer
 
 	xor     a
     vdpWriteReg 15              ; set status reg #0
 
+    ei
     ex      de,hl
     ret                         ; SDCC needs return in DE
 
-runTestCombo_inner::            ; IY: Pointer to paramsreturns in HL, the best delay found
+runTestCombo_inner::            ; IY: Pointer to paramsreturns in HL, the best delay found.
 
     ; wait?
     xor     a
     ld      b,6(iy)
     or      b
     jr      z,loopr_start
-    ; ld      a,c
-    ; add     b                   ; TODO FOX THIS
-    ; ld      b,a                 ; this makes delays increase for each round
+
+    ei
+    halt
+    di
+    ld      a,c
+    add     b                   ; TODO FIX THIS
+    ld      b,a                 ; this makes delays increase for each round (may overflow)
+
+    ; call    waitOneThirdOfRasterLine
+    ; call    waitOneThirdOfRasterLine
+    ; call    waitOneThirdOfRasterLine
+    ; call    waitOneThirdOfRasterLine
+
 wloop::
-    call    waitOneThirdOfRasterLine
+    ; call    waitOneThirdOfRasterLine
     djnz    wloop
-  
+
+	ld		a, #2
+    vdpWriteReg 15              ; set status reg #2
+
+
     ; the real loop
 loopr_start::
     ld      c,2(iy)             ; the command in C
@@ -585,7 +596,7 @@ loopr_start::
 
 loopr::
     call    setVDPParams
-    call    testVDP             ; C = Cmd, HL = delay. Result in A
+    call    testVDP             ; C = Cmd, DE = delay. Result in A
     rr      a                   ; CE bit goes into C, but if all we are ZERO here, something is wrong
     jr      z,bail              ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
     jp      nc,job_was_done

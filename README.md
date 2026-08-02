@@ -5,7 +5,7 @@
 ignoring PAL/NTSC, 192/212, VBLANK/DISPLAY.
 
 
-
+https://openmsx.org/vdp-vram-timing/vdp-timing.html 
 
 https://www.msx.org/forum/msx-talk/development/extra-vdp-wait-cycles?page=0
 

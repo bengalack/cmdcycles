@@ -13,22 +13,22 @@
 ; ----------------------------------------------------------------------------
 ; LOCAL CONSTANTS
 
-    CRTCNT      .equ 0xF3B1             ; 24 or 26
+    CRTCNT              .equ 0xF3B1             ; 24 or 26
 
-    VDP_REG0    .equ 0xF3DF             ; line interrupt enable
-    LINE_INT_BITMASK .equ #0b10000      ; to be used with VDP_REG0. Flag(1) means enabled
+    VDP_REG0            .equ 0xF3DF             ; line interrupt enable
+    LINE_INT_BITMASK    .equ #0b10000           ; to be used with VDP_REG0. Flag(1) means enabled
 
-    VDP_REG1    .equ 0xF3E0             ; ram copy
-    SCR_BITMASK .equ #0b01000000        ; to be used with VDP_REG1. Flag(1) means enabled
+    VDP_REG1            .equ 0xF3E0             ; ram copy
+    SCR_BITMASK         .equ #0b01000000        ; to be used with VDP_REG1. Flag(1) means enabled
 
-    VDP_REG8    .equ 0xFFE7             ; ram copy
-    SPR_BITMASK .equ #0b00000010        ; to be used with VDP_REG8. Flag(1) means disabled
+    VDP_REG8            .equ 0xFFE7             ; ram copy
+    SPR_BITMASK         .equ #0b00000010        ; to be used with VDP_REG8. Flag(1) means disabled
 
-    VDP_REG9    .equ 0xFFE8             ; ram copy
-    FRQ_BITMASK .equ #0b00000010        ; to be used with VDP_REG9. Flag(1) means PAL.
-    LINES212_BITMASK .equ #0b10000000   ; to be used with VDP_REG9. Flag(1) means 212.
+    VDP_REG9            .equ 0xFFE8             ; ram copy
+    FRQ_BITMASK         .equ #0b00000010        ; to be used with VDP_REG9. Flag(1) means PAL.
+    LINES212_BITMASK    .equ #0b10000000        ; to be used with VDP_REG9. Flag(1) means 212.
 
-    VDPCMD_YMMM .equ 0b11100000         ; FASTEST COPY BLOCK (only Y differs)
+    VDPCMD_YMMM         .equ 0b11100000         ; FASTEST COPY BLOCK (only Y differs)
 
 
 ; ----------------------------------------------------------------------------
@@ -262,12 +262,12 @@ done_set_YMMM:
 	ret
 
 
-; -----------------------------------------------------------------------------
-; 
-; void _executeCmdWithPreppedParams(u8 uCmd); // A
-_executeCmdWithPreppedParamsNI::
-	out   	(VDPSTREAM),a
-    ret
+; ; -----------------------------------------------------------------------------
+; ; 
+; ; void _executeCmdWithPreppedParams(u8 uCmd); // A
+; _executeCmdWithPreppedParamsNI::
+; 	out   	(VDPSTREAM),a
+;     ret
 
 ;-------------------------
 ; Modifies: AF,B
