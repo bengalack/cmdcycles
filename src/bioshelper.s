@@ -81,15 +81,12 @@ _getTime::
     push    hl
     pop     iy
 
-    ; --- Read Date ---
-
     ld      c,#BDOS_GETDATE
     call    BDOS            ; Returns:
                             ;   HL = Year (e.g., 2026)
                             ;   D  = Month (1-12)
                             ;   E  = Day (1-31)
                             ;   A  = Day of week (0=Sun, 1=Mon...6=Sat)
-
     dec     d
     dec     e
 
@@ -98,14 +95,12 @@ _getTime::
     ld      2(iy),d
     ld      3(iy),e
 
-    ; --- Read Time ---
     ld      c,#BDOS_GETTIME
     call    BDOS            ; Returns:
                             ;   H  = Hours (0-23)
                             ;   L  = Minutes (0-59)
                             ;   D  = Seconds (0-59)
                             ;   E  = 0
-
     ld      4(iy),h
     ld      5(iy),l
     ld      6(iy),d
@@ -419,18 +414,6 @@ lp:                     ; each loop is 33 cycles
     ret
 
 ; -------------------------------------------------------------
-; Wait one third of a line (227.5/3 = almost 78 cycles)
-; MODIFIES: Nothing!
-waitOneThirdOfRasterLine:
-    
-    ; calling this  ; 18
-    push    af      ; 12
-    jr      .+2    ; 13
-    jr      .+2    ; 13
-    pop     af      ; 11
-    ret             ; 11 (=78)
-
-; -------------------------------------------------------------
 ; Counts downwards.
 ; IN:       HL current
 ; OUT:      DE next
@@ -521,7 +504,6 @@ testVDP:
 ;        u8                      uCmd;          2
 ;        u8                      uIterations;   3
 ;        u16                     nStartDelay;   4
-;        u8                      uFirstWait;    6
 ;    } RunCombo;
 ; OUT:
 ; MODIFIES:
@@ -529,73 +511,53 @@ testVDP:
 _runTestCombo::
     ; in a,(0x2e)
 
-    ; ld      b,#1                ; random number sets the times we do this
+    push    ix
     ld      a,(_g_uOuterIterations)
     ld      b,a
+
     ex      de,hl
     ld      iyl,e 
     ld      iyh,d               ; put pointer to struct in IY
 
     ld      c,#0
 
-mer:
-    push    bc
+mer::
+    push    bc                  ; B(outer): Outer iterations.
     di
-    call    runTestCombo_inner
+    ld      b,3(iy)             ; inner iterations
+    ld      c,2(iy)             ; C: command
+    ld      l,4(iy)
+    ld      h,5(iy)             ; HL: Current Greenlit delay
+    ld      e,l
+    ld      d,h                 ; DE: Current Attempting delay
+    ld      ixl,#0              ; wait-index
+    call    runTestComboInner
     pop     bc 
-    inc     c
     djnz    mer
 
 	xor     a
     vdpWriteReg 15              ; set status reg #0
 
     ei
+    pop     ix
     ex      de,hl
     ret                         ; SDCC needs return in DE
 
-runTestCombo_inner::            ; IY: Pointer to paramsreturns in HL, the best delay found.
-
-    ; wait?
-    xor     a
-    ld      b,6(iy)
-    or      b
-    jr      z,loopr_start
+runTestComboInner::             ; IY: Pointer to params. returns in HL, the best delay found.
 
     ei
-    halt
+    halt                        ; one IN (= +1 cycle on toshiba models)
     di
-    ld      a,c
-    add     b                   ; TODO FIX THIS
-    ld      b,a                 ; this makes delays increase for each round (may overflow)
-
-    ; call    waitOneThirdOfRasterLine
-    ; call    waitOneThirdOfRasterLine
-    ; call    waitOneThirdOfRasterLine
-    ; call    waitOneThirdOfRasterLine
-
-wloop::
-    ; call    waitOneThirdOfRasterLine
-    djnz    wloop
 
 	ld		a, #2
-    vdpWriteReg 15              ; set status reg #2
+    vdpWriteReg 15              ; set status reg #2. This one will use +1 on Toshiba models
 
-
-    ; the real loop
-loopr_start::
-    ld      c,2(iy)             ; the command in C
-    ld      l,4(iy)
-    ld      h,5(iy)             ; HL: Current Greenlit delay
-    ld      e,l
-    ld      d,h                 ; DE: Current Attempting delay
-    ld      b,3(iy)             ; the initial number of iterations per try
-
-    xor     a
-    or      b
-    ret     z                   ; if NO iterations, we just return. this is wrong
+    push    hl
+    call    doControlledWait    ; IXL is input. constant wait in cycles + ixl value.
+    pop     hl
 
 loopr::
-    call    setVDPParams
+    call    setVDPParams        ; this one will add several extra cycles on Toshiba models
     call    testVDP             ; C = Cmd, DE = delay. Result in A
     rr      a                   ; CE bit goes into C, but if all we are ZERO here, something is wrong
     jr      z,bail              ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
@@ -603,16 +565,25 @@ loopr::
 
 job_was_not_done::              ; if not done, we must try until all attempts are done 
     djnz    loopr               ; just try again with same values
-    jp      bail                ; if we get here, we are out of attempts.
+
+    ld      a,ixl
+    ; cp      #15                 ; iterate over 16 different wait values
+    cp      #11                  ; ensure we jump over the gap
+    jp      z,bail              ; if we get here, we are out of ixl controlled attempts.
+
+    ld      b,3(iy)             ; reset inner iterations 
+    inc     ixl                 ; same run, but +1 cycle wait
+    jp      runTestComboInner   ; if next possible delay == 0, we bail
 
 job_was_done::
-    ld      b,3(iy)             ; success, so restart testing but try one lower
+    ld      b,3(iy)             ; success, so restart testing but try one lower DE value
+    ld      ixl,#0              ; starts with a resetted wait index
     ld      h,d
     ld      l,e                 
     call    getNextPossibleDelay
     ld      a,d
     or      e
-    jr      nz,loopr            ; if next possible delay == 0, we bail
+    jp      nz,runTestComboInner; if next possible delay == 0, we bail
 
 bail::
     ld      4(iy),l             ; updating this struct value in case we do new runs
@@ -621,23 +592,87 @@ bail::
     ret
 
 ; -------------------------------------------------------------
-; Wild guess, if this really works.
-; IN:       -
-; OUT:      A - bool
-; MODIFIES: AF
-; bool hasT976xEngine(void)
-_hasT976xEngine::
+; This function will always take "65 + 14 + ixl" cycles (79 + ixl)
+; (+ 18 cycles for the call itself)
+; IN:       IXL: 
+; MODIFIES: AF, HL
+doControlledWait::
+    ld      hl,#wait_jump_table
 
-    in      a, (0xF4)           ; Read internal T9769 status register
-    cp      #0xFF               ; Is it unmapped / floating open bus?
-    jr      z,nothing_here
+    ld      a,ixl
+    add     a,a
+    addAtoHL                    ; constant cycle use inside this
 
-    ld      a,#1                ; yes, it is a T976x engine
+    ld      a,(hl)
+    inc     hl
+    ld      h,(hl)
+    ld      l,a
+
+    jp      (hl)
+
+wait_jump_table:: ; some of these may trash HL
+    .dw delay_stub0
+    .dw delay_stub1
+    .dw delay_stub2
+    .dw delay_stub3
+    .dw delay_stub4
+    .dw delay_stub5
+    .dw delay_stub6
+    .dw delay_stub7
+    .dw delay_stub8
+    .dw delay_stub9
+    .dw delay_stub10
+    .dw delay_stub11
+    .dw delay_stub12
+    .dw delay_stub13
+    .dw delay_stub14
+    .dw delay_stub15
+
+delay_stub0::
+    delay14
     ret
-
-nothing_here:
-    xor     a                   ; Yamaha (S3527/S1985) or discrete ASIC
+delay_stub1::
+    delay15
     ret
-
-
-
+delay_stub2::
+    delay16
+    ret    
+delay_stub3::
+    delay17
+    ret
+delay_stub4::
+    delay18
+    ret
+delay_stub5::
+    delay19
+    ret
+delay_stub6::
+    delay20
+    ret
+delay_stub7::
+    delay21
+    ret
+delay_stub8::
+    delay22
+    ret
+delay_stub9::
+    delay23
+    ret
+delay_stub10::
+    delay24
+    ret
+delay_stub11::
+    delay25
+    ret
+delay_stub12::
+    delay26
+    ret
+delay_stub13::
+    delay27
+    ret
+delay_stub14::
+    delay28
+    ret
+delay_stub15::
+    delay29
+    ret

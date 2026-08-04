@@ -62,11 +62,15 @@
 #define LOGICAL_OP_TEOR     0b1011 // if SC=0 then DC=DC else DC=SCxDC+SCxDC
 #define LOGICAL_OP_TNOT     0b1100 // if SC=0 then DC=DC else DC=SC
 
-// #define NUM_TESTS           2
+// #define NUM_TESTS           1
 #define NUM_TESTS           5
 #define NUM_HORIZONTALS     8
 #define NUM_VERTICALS       8
 #define INITIAL_LOOP_CYCLES 33
+
+// #define DEFAULT_INNER_LOOPS 32  // this one is tested 16 times (16 x 16 = 256)
+#define DEFAULT_INNER_LOOPS 64  // 0 = 256
+#define DEFAULT_OUTER_LOOPS 4
 
 #define SCREEN_MODE         8 // 5? 8?
 
@@ -93,7 +97,6 @@ typedef struct {
     u8                      uCmd;
     u8                      uIterations;
     u16                     nStartDelay;
-    u8                      uFirstWait;
 } RunCombo;
 
 typedef struct {
@@ -150,11 +153,11 @@ extern u16      measureVDPCommandsInOneFrame(void);
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]       = "0.6";
+const u8                g_szVersion[]       = "0.73";
 const u8                g_szErrorMSX[]      = "MSX2 or higher is required";
 
 const u8                g_szTopLine1[]      = "cmdcycle v%s - %s  \r\n"; // markdown needs two spaces at end of line to force line break
-const u8                g_szTopLine2[]      = "* VDP detected: %s%s. Screen %d. Screen off. (-i:%d -o:%d -w:%d)\r\n";
+const u8                g_szTopLine2[]      = "* VDP detected: %s%s. Screen %d. Screen off. (-i:%d -o:%d)\r\n";
 const u8                g_szTopLine3[]      = "* Result data on this T976x based system have a +1 cycle included\r\n";
 const u8                g_szEmptyLine[]     = "\r\n";
 //                                          = "                                                                               "; // 79!
@@ -180,9 +183,8 @@ const u8                g_szHelptext[]      = "Usage: cmdcycle [opt][sys]\r\n"
                                             "Options (opt):\r\n"
                                             " -h Show this help message\r\n"
                                             // " -5 Screen 5 (default: 8)\r\n"
-                                            " -o n Outer loops(6)\r\n"
-                                            " -i n Inner loops(255)\r\n"
-                                            " -w n Init 69-cycle waits(1)\r\n"
+                                            " -o n Outer loops(%d)\r\n"
+                                            " -i n Inner loops(%d)\r\n"
                                             "\r\n"
                                             "sys: Show sys name in report\r\n";
 
@@ -232,6 +234,16 @@ const u8* const         aTEST_NAME[NUM_TESTS] = \
                             // ,"Line     "
                         };
 
+const u8 const          aEXECUTE_CMD[NUM_TESTS] = \
+                        {
+                             VDPCMD_LMMM | LOGICAL_OP_TEOR  // just random logical op (which does not become 0)
+                            ,VDPCMD_HMMM
+                            ,VDPCMD_YMMM
+                            ,VDPCMD_HMMV
+                            ,VDPCMD_LMMV | LOGICAL_OP_TOR   // just random logical op  (which does not become 0)
+                            // ,VDPCMD_LINE | LOGICAL_OP_EOR   // just random logical op
+                        };
+
 const u8 const          aHORZ_LEN[NUM_HORIZONTALS] = 
                         {
                              1
@@ -256,16 +268,6 @@ const u8 const          aVERT_LEN[NUM_VERTICALS] =
                             ,8
                         };
 
-const u8 const          aEXECUTE_CMD[NUM_TESTS] = \
-                        {
-                             VDPCMD_LMMM | LOGICAL_OP_TEOR  // just random logical op (which does not become 0)
-                            ,VDPCMD_HMMM
-                            ,VDPCMD_YMMM
-                            ,VDPCMD_HMMV
-                            ,VDPCMD_LMMV | LOGICAL_OP_TOR   // just random logical op  (which does not become 0)
-                            // ,VDPCMD_LINE | LOGICAL_OP_EOR   // just random logical op
-                        };
-
 // RAM variables -------------------------------------------------------------
 //
 u8                      g_auBuffer[ 256 ];      // temp/general buffer here to avoid stack explosion
@@ -275,11 +277,14 @@ void*                   g_pInterruptOrg;
 u8                      g_uVDPModel;
 u8                      g_uInnerIterations;
 u8                      g_uOuterIterations;
-u8                      g_uStartWaits;
 bool                    g_bHasT976xEngine;
 DateTime                g_oTimestamp0;
 DateTime                g_oTimestamp1;
 DateTime                g_oTimestamp2;
+
+u8                      DBUG_N;
+u8                      DBUG_X;
+u8                      DBUG_Y;
 
 u8                      g_auSysStr[MAX_SYS_LEN];// name of system
 
@@ -320,9 +325,8 @@ void initVarsAndRig(void)
 
     g_uVDPModel = getVDPModel();
 
-    g_uInnerIterations = 255;
-    g_uOuterIterations = 6;
-    g_uStartWaits = 1;
+    g_uInnerIterations = DEFAULT_INNER_LOOPS;
+    g_uOuterIterations = DEFAULT_OUTER_LOOPS;
 }
 
 // ---------------------------------------------------------------------------
@@ -331,11 +335,11 @@ void establishInitialDelays(void)
 {
     disableInterrupt();
 
-    for(u8 c = 0; c < NUM_TESTS; c++)
+    for(u8 c = 0; c < arraysize(aEXECUTE_CMD); c++)
     {
-        for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+        for(u8 u = 0; u < arraysize(aHORZ_LEN); u++)
         {
-            for(u8 v = 0; v < NUM_VERTICALS; v++)
+            for(u8 v = 0; v < arraysize(aVERT_LEN); v++)
             {
                 setVDPCmdParamsNI(aHORZ_LEN[u], aVERT_LEN[v]);
                 g_anDelays[c][u][v] = (u16)getInitialDelayNI(aEXECUTE_CMD[c]) * INITIAL_LOOP_CYCLES;
@@ -353,29 +357,30 @@ void runTest(void)
     RunCombo oParams;
 
     oParams.uIterations = g_uInnerIterations;
-    oParams.uFirstWait = g_uStartWaits; // one-third-line's
-    
-    // halt(); // We need a common starting point for comparing numbers
 
-    // disableInterrupt();
-
-    for(u8 c = 0; c < NUM_TESTS; c++)
+    for(u8 c = 0; c < arraysize(aEXECUTE_CMD); c++)
     {
+DBUG_N = c;
         oParams.uCmd = aEXECUTE_CMD[c];
-        for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+
+        for(u8 u = 0; u < arraysize(aHORZ_LEN); u++)
         {
+DBUG_X = u;
             oParams.uW = aHORZ_LEN[u];
-            for(u8 v = 0; v < NUM_VERTICALS; v++)
+
+            for(u8 v = 0; v < arraysize(aVERT_LEN); v++)
             {
+DBUG_Y = v;
                 oParams.uH = aVERT_LEN[v];
                 oParams.nStartDelay = g_anDelays[c][u][v];
+
+                // if(v==1)
+                //     break();
+
                 g_anDelays[c][u][v] = runTestCombo(&oParams);
             }
         }
     }
-    // break();
-
-    // enableInterrupt();
 }
 
 // ---------------------------------------------------------------------------
@@ -410,9 +415,8 @@ void printReport(void)
             aVDP_NAME[g_uVDPModel],
             szT976x,
             SCREEN_MODE,
-            g_uInnerIterations,
-            g_uOuterIterations,
-            g_uStartWaits
+            g_uInnerIterations==0?256: g_uInnerIterations,
+            g_uOuterIterations
            );
 
     print(g_auBuffer);
@@ -430,7 +434,7 @@ void printReport(void)
     u16 nAdd = g_bHasT976xEngine ? 1 : 0;
     u32 ulSum = 0;
 
-    for(u8 t = 0; t < arraysize(aTEST_NAME); t++)
+    for(u8 t = 0; t < arraysize(aEXECUTE_CMD); t++)
     {
         sprintf(g_auBuffer,
                 g_szHeader1,
@@ -487,7 +491,7 @@ void printReport(void)
 // ---------------------------------------------------------------------------
 void printHelp(void)
 {
-    sprintf(g_auBuffer, g_szHelptext, g_szVersion);
+    sprintf(g_auBuffer, g_szHelptext, g_szVersion, DEFAULT_OUTER_LOOPS, DEFAULT_INNER_LOOPS==0 ? 256 : DEFAULT_INNER_LOOPS);
     print(g_auBuffer);
 }
 
@@ -533,9 +537,9 @@ u8 main(char** argv, u8 argc)
 
                 iVal = atoi(argv[n]);
 
-                if((iVal < 1 ) || (iVal > 255))
+                if((iVal < 1 ) || (iVal > 256))
                 {
-                    print("ERROR:Value for -i must be in range 1-255");
+                    print("ERROR:Value for -i must be in range 1-256");
                     return 1;
                 }
                 g_uInnerIterations = (u8)iVal;
@@ -555,22 +559,6 @@ u8 main(char** argv, u8 argc)
                     return 1;
                 }
                 g_uOuterIterations = (u8)iVal;
-            }
-            else if(strcmp(argv[n], "-w") == 0)
-            {
-                if(++n >= argc)
-                {
-                    print("ERROR:Missing value for -w");
-                    return 1;
-                }
-
-                iVal = atoi(argv[n]);
-                if((iVal < 0) || (iVal > 255))
-                {
-                    print("ERROR:Value for -w must be in range 0-255");
-                    return 1;
-                }
-                g_uStartWaits = (u8)iVal;
             }
             else
             {

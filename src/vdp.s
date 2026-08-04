@@ -192,6 +192,7 @@ setup_done2:
 ; -----------------------------------------------------------------------------
 ; Does everything at (256-w,256-h) in page 0 => same place in page 1
 ; We pass the planned command, but we do NOT execute it
+; This routine has 16 outs, ie. +16 outs on some VDPs
 ; MODIFIES: AF, C, DE, HL
 ; void setVDPCmdParamsNI(u8 w, u8 h); A, L 
 _setVDPCmdParamsNI::
