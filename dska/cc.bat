@@ -1,1 +1,1 @@
-cmdcycle Sanyo_phc-70FD2 > phc-70FD2.md 
+cmdcycle Panasonic_FS-A1GT > FS-A1GT.md 

@@ -31,13 +31,25 @@
 #include <stdbool.h>
 #include <stdlib.h>     // atoi
 
+
+// Defines shared with ASM files ---------------------------------------------
+//
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
+#define DEF
+enum {
+#include "shared_constants.def"
+};
+#undef DEF
+#endif
+
 // Typedefs & defines --------------------------------------------------------
 //
 #define halt()				{__asm halt __endasm;}
 #define enableInterrupt()	{__asm ei __endasm;}
 #define disableInterrupt()	{__asm di __endasm;}
 #define break()				{__asm in a,(0x2e) __endasm;} // for debugging. may be risky to use as it trashes A
-#define arraysize(arr)      (sizeof(arr)/sizeof((arr)[0]))
+// #define arraysize(arr)      (sizeof(arr)/sizeof((arr)[0]))
 
 #define VDPCMD_LMMM		    0b10010000 // LOGICAL COPY BLOCK
 #define VDPCMD_LMMV		    0b10000000 // LOGICAL FILL
@@ -62,17 +74,25 @@
 #define LOGICAL_OP_TEOR     0b1011 // if SC=0 then DC=DC else DC=SCxDC+SCxDC
 #define LOGICAL_OP_TNOT     0b1100 // if SC=0 then DC=DC else DC=SC
 
-// #define NUM_TESTS           1
-#define NUM_TESTS           5
+#define NUM_TESTS           1
+// #define NUM_TESTS           5
 #define NUM_HORIZONTALS     8
 #define NUM_VERTICALS       8
-#define INITIAL_LOOP_CYCLES 33
+
+#define INITIAL_LOOP_CYCLES 33      // max size: 63 (!)
+#define SCRATCH_HIST_SIZE   1024 
+#define MY_HEAP_SIZE        28000   // size in bytes
+#define LEEWAY              50      // we need to add some buffer to the initial delay to avoid having the real test MISS hitting the initial measurement (has happened)
+#define METHOD_SYNC         1       // 0: ISR, 1: LINE INTS
+// #define METHOD_WAIT         1       // 0: No wait, 1: Counter, 2: Random (R-reg)
 
 // #define DEFAULT_INNER_LOOPS 32  // this one is tested 16 times (16 x 16 = 256)
 #define DEFAULT_INNER_LOOPS 64  // 0 = 256
-#define DEFAULT_OUTER_LOOPS 4
+#define DEFAULT_OUTER_LOOPS 3
 
 #define SCREEN_MODE         8 // 5? 8?
+
+enum condition { ACTIVE_DISPLAY, ACTIVE_DISPLAY_NO_SPRITES, NO_DISPLAY, NUM_CONDITIONS };
 
 typedef signed char         s8;
 typedef unsigned char       u8;
@@ -81,7 +101,7 @@ typedef unsigned short      u16;
 typedef signed long         s32;
 typedef unsigned long       u32;
 
-#define MAX_SYS_LEN         (61+1)
+#define MAX_SYS_LEN         (61+1-22) // minus datestring
 
 // -------------------------------------------------------------------------
 // typedef union {
@@ -95,9 +115,17 @@ typedef struct {
     u8                      uW;
     u8                      uH;
     u8                      uCmd;
-    u8                      uIterations;
+    u8                      uInnerIterations;
     u16                     nStartDelay;
+    u8                      uOuterIterations;
+    u16*                    pHistogramWinner; 
 } RunCombo;
+
+typedef struct {
+    u16*                    panHistogram;
+    u16                     nHistogramLength;
+    u16                     nHistogramStartValue;
+} Histogram;
 
 typedef struct {
     u16                     nYear;      // 1980-
@@ -122,14 +150,17 @@ extern bool     hasTurboFeature(void) __preserves_regs(d,e,h,l,iyl,iyh);
 
 extern u8       changeMode(u8 uModeNum); 
 extern void     setLineWidth(u8 uWidth);
-extern void     customISR(void);
+// extern void     customISR(void);
 extern void     print(u8* szMessage);
-extern u8       waitForKey(void);
+// extern u8       waitForKey(void);
 extern bool     userOutputsToScreen(void);
 extern void     getTime(DateTime* pDateTime);
 
+extern void     prepareLineInterruptsNI(void) __preserves_regs(b,c,d,e,h,l,iyl);
+extern void     cleanupLineInterruptsNI(void) __preserves_regs(b,c,d,e,h,l,iyl,iyh);
 
-extern u16      runTestCombo(RunCombo* p);
+extern u16      runTestCombo(RunCombo* p, u16* panHistogramLastIndex);
+extern u16      runTestComboNoHalts(RunCombo* p, u16* panHistogramLastIndex);
 extern u8       getInitialDelayNI(u8 uVDP_CMD);
 
 // from vdp.s
@@ -153,40 +184,73 @@ extern u16      measureVDPCommandsInOneFrame(void);
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]       = "0.73";
-const u8                g_szErrorMSX[]      = "MSX2 or higher is required";
+const u8                g_szVersion[]           = "0.79";
+const u8                g_szErrorMSX[]          = "MSX2 or higher is required";
 
-const u8                g_szTopLine1[]      = "cmdcycle v%s - %s  \r\n"; // markdown needs two spaces at end of line to force line break
-const u8                g_szTopLine2[]      = "* VDP detected: %s%s. Screen %d. Screen off. (-i:%d -o:%d)\r\n";
-const u8                g_szTopLine3[]      = "* Result data on this T976x based system have a +1 cycle included\r\n";
-const u8                g_szEmptyLine[]     = "\r\n";
-//                                          = "                                                                               "; // 79!
-const u8                g_szHeader1[]       = "| %-15s    | %d    | %d    | %d    | %d    | %d    | %d    | %d    | %d    |\r\n";
-const u8                g_szHeader2[]       = "|--------------------|------|------|------|------|------|------|------|------|\r\n";
-const u8                g_szResultLine[]    = "| %d                  | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu |\r\n";
-const u8                g_szSumLine[]       = "Sum cycles: %d  \r\n";
-const u8                g_szTotalLine[]     = "Grand total cycles: %lu  \r\n";
-const u8                g_szDurationTest[]  = "Duration test:  %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
-const u8                g_szDurationPrint[] = "Duration print: %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
+const u8                g_szTopLine1[]          = "cmdcycle v%s - %04hu-%02d-%02d %02d:%02d:%02d - %s  \r\n"; // markdown needs two spaces at end of line to force line break
+const u8                g_szTopLine2[]          = "* VDP detected: %s%s, screen %d, mode: %s. (-i:%d -o:%d)\r\n";
+const u8                g_szTopLine2x[]         = "* Sync method: %s, wait method: %s\r\n";
+const u8                g_szTopLine3[]          = "* Result data on this T976x based system have a +1 cycle included\r\n";
+const u8                g_szEmptyLine[]         = "\r\n";
+//                                              = "                                                                               "; // 79!
+const u8                g_szTitle1[]            = "## CYCLES\r\n";
+const u8                g_szHeader1[]           = "| %-15s    | %d    | %d    | %d    | %d    | %d    | %d    | %d    | %d    |\r\n";
+const u8                g_szHeader2[]           = "|--------------------|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|\r\n";
+const u8                g_szResultLine[]        = "| %d                  | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu |\r\n";
+const u8                g_szHistHeader1[]       = "| %-15s    |                                                       |\r\n";
+const u8                g_szHistHeader2[]       = "|--------------------|:------------------------------------------------------|\r\n";
+const u8                g_szHistResultLine[]    = "| %dx%d %-6s         | %s\r\n"; // %6s is like "(32)  " or "(1440)"
 
-//"                             " // 29 chars (turbo r)
-const u8                g_szHelptext[]      = "Usage: cmdcycle [opt][sys]\r\n"
-                                            "\r\n"
-                                            "Measure the duration of VDP\r\n"
-                                            "command in MSX Z80 cycles.\r\n"
-                                            "Output format is markdown.\r\n"
-                                            "Use 80 char width. Written\r\n"
-                                            "to stdout unless redirected.\r\n"
-                                            "\r\n"
-                                            "Version: %s\r\n"
-                                            "\r\n"
-                                            "Options (opt):\r\n"
-                                            " -h Show this help message\r\n"
-                                            // " -5 Screen 5 (default: 8)\r\n"
-                                            " -o n Outer loops(%d)\r\n"
-                                            " -i n Inner loops(%d)\r\n"
-                                            "\r\n"
-                                            "sys: Show sys name in report\r\n";
+const u8                g_szSumLine[]           = "Sum: %lu  \r\n";
+const u8                g_szTotalLine[]         = "Grand total: %lu  \r\n";
+const u8                g_szDurationTest[]      = "Duration test:  %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
+const u8                g_szDurationPrint[]     = "Duration print: %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
+
+const u8                g_szTitle2[]            = "## HISTOGRAM\r\n";
+
+const u8* const         g_aszConditionNames[] = {
+                                                    "Active display",
+                                                    "No sprites",
+                                                    "No display"
+                                                };
+
+#if METHOD_SYNC==1
+const u8                g_szSyncMethod[]         = "Line interrupts";
+#else
+const u8                g_szSyncMethod[]         = "VBLANK interrupt";
+#endif
+
+#if METHOD_WAIT==1
+const u8                g_szWaitMethod[]         = "Incremental";
+#elif METHOD_WAIT==2
+const u8                g_szWaitMethod[]         = "Random (R-reg)";
+#else
+const u8                g_szWaitMethod[]         = "No wait";
+#endif
+
+const u8                g_szHelptext[]          = "Usage: cmdcycle [opt][sys]\r\n"
+                                                "\r\n"
+                                                "Measure the duration of VDP\r\n"
+                                                "command in MSX Z80 cycles\r\n"
+                                                "(outside VBLANK area).\r\n"
+                                                "Output format is markdown.\r\n"
+                                                "Use 80 char width for msx\r\n"
+                                                "viewing. Written to stdout\r\n"
+                                                "unless redirected.\r\n"
+                                                "\r\n"
+                                                "Version: %s\r\n"
+                                                "\r\n"
+                                                "Options (opt):\r\n"
+                                                " -h Show this help message\r\n"
+                                                // " -5 Screen 5 (default: 8)\r\n"
+                                                " -o n Outer loops(%d)\r\n"
+                                                " -i n Inner loops(%d)\r\n"
+                                              //"                             " // 29 chars (turbo r)
+                                                " -1 Mode: normal (default)\r\n"
+                                                " -2 Mode: no sprites\r\n"
+                                                " -3 Mode: no screen\r\n"
+                                                "\r\n"
+                                                "sys: Show sys name in report\r\n";
 
 const u8* const         aVDP_NAME[32] =
                         {
@@ -271,42 +335,34 @@ const u8 const          aVERT_LEN[NUM_VERTICALS] =
 // RAM variables -------------------------------------------------------------
 //
 u8                      g_auBuffer[ 256 ];      // temp/general buffer here to avoid stack explosion
+u8                      g_auHistStrBuf[ 256 ];  // temp/general buffer here to avoid stack explosion
 void* __at(0x0039)      g_pInterrupt;           // We assume that 0x0038 already holds 0xC3 (JP) in dos mode at startup
 void*                   g_pInterruptOrg;
+u8                      g_uCurrentInterruptLine;
+bool                    g_bACTIVE_AREA;         // raster currently in VBLANK (false) or not (true)
 
 u8                      g_uVDPModel;
 u8                      g_uInnerIterations;
 u8                      g_uOuterIterations;
 bool                    g_bHasT976xEngine;
-DateTime                g_oTimestamp0;
-DateTime                g_oTimestamp1;
-DateTime                g_oTimestamp2;
+u8                      g_uCondition;
+
+u16*                    g_pHeapHead;            // for MY_HEAP, jalla-malloc
 
 u8                      DBUG_N;
 u8                      DBUG_X;
 u8                      DBUG_Y;
+u8                      ERROR_CODE;
+
+u8                      DBUG_LEN1;
+u8                      DBUG_LEN2;
 
 u8                      g_auSysStr[MAX_SYS_LEN];// name of system
 
-u16                     g_anDelays[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];
-
-
-// ---------------------------------------------------------------------------
-void setCustomISR(void)
-{
-    disableInterrupt();
-    g_pInterruptOrg = g_pInterrupt;
-    g_pInterrupt    = &customISR;
-    enableInterrupt();
-}
-
-// ---------------------------------------------------------------------------
-void restoreOriginalISR(void)
-{
-    disableInterrupt();
-    g_pInterrupt = g_pInterruptOrg;
-    enableInterrupt();
-}
+u16                     g_anScratchHistogram[SCRATCH_HIST_SIZE];                        // scratch for sampling
+u16                     g_anResultDelays[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];    // Initial and results delays
+Histogram               g_aoHistogram[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];       // Condensed and tidy
+u8                      MY_HEAP[MY_HEAP_SIZE];                                          // Sadly, SDCC supports only 1024 kB from malloc...
 
 // ---------------------------------------------------------------------------
 // Must only be called when tR runs in z80 mode, normal ROM/RAM.
@@ -314,8 +370,8 @@ void restoreOriginalISR(void)
 void detectT976xEngine(void)
 {
     u16 nCmds = measureVDPCommandsInOneFrame();
-    u16 nComparableNumber = getPALRefreshRate()? (0x948-1) : (0x7C4-1); // setting a delta of 1 cycle to avoid false negatives
-    g_bHasT976xEngine = !(nCmds >= nComparableNumber); // adding 10 cycles 
+    u16 nComparableNumber = getPALRefreshRate()? (0x948-2) : (0x7C4-2); // setting a delta of 2 cycle to avoid false negatives
+    g_bHasT976xEngine = !(nCmds >= nComparableNumber);
 }
 
 // ---------------------------------------------------------------------------
@@ -327,77 +383,208 @@ void initVarsAndRig(void)
 
     g_uInnerIterations = DEFAULT_INNER_LOOPS;
     g_uOuterIterations = DEFAULT_OUTER_LOOPS;
+
+    g_uCurrentInterruptLine = 200; // start value needs to non-zero
+    g_bACTIVE_AREA = false;
+
+    g_uCondition = ACTIVE_DISPLAY; // default
+    // g_uCondition = NO_DISPLAY;
+
+    g_pHeapHead = (u16*)MY_HEAP;
+
+    memset(g_anResultDelays, 0, sizeof(g_anResultDelays));
+    memset(g_aoHistogram, 0, sizeof(g_aoHistogram));
 }
 
 // ---------------------------------------------------------------------------
+// The correct screen mode must be set up front for the values to be correct
 //
 void establishInitialDelays(void)
 {
     disableInterrupt();
-
-    for(u8 c = 0; c < arraysize(aEXECUTE_CMD); c++)
+    prepareLineInterruptsNI(); // sets status reg 2
+    for(u8 c = 0; c < NUM_TESTS; c++)
     {
-        for(u8 u = 0; u < arraysize(aHORZ_LEN); u++)
+        for(u8 u = 0; u < NUM_HORIZONTALS; u++)
         {
-            for(u8 v = 0; v < arraysize(aVERT_LEN); v++)
+            for(u8 v = 0; v < NUM_VERTICALS; v++)
             {
                 setVDPCmdParamsNI(aHORZ_LEN[u], aVERT_LEN[v]);
-                g_anDelays[c][u][v] = (u16)getInitialDelayNI(aEXECUTE_CMD[c]) * INITIAL_LOOP_CYCLES;
+                g_anResultDelays[c][u][v] = (u16)(getInitialDelayNI(aEXECUTE_CMD[c]) * (u16)INITIAL_LOOP_CYCLES) + (u16)LEEWAY; // obeys active area restriction using line interrupts.
             }
         }
     }
 
+    cleanupLineInterruptsNI();// sets status reg 0
     enableInterrupt();
 }
 
 // ---------------------------------------------------------------------------
+// 
+u16* myMalloc(u16 nSize)
+{
+    u16* p = g_pHeapHead;
+
+    if((u16)g_pHeapHead - (u16)MY_HEAP + nSize > MY_HEAP_SIZE)
+        return NULL; // out of memory
+
+    g_pHeapHead += nSize;
+
+    return p;
+}
+
+// ---------------------------------------------------------------------------
+// Copy the actual histogram to a new buffer and store a pointer to it in the
+// RunCombo struct, as well as some key data
+bool recordAndClearHistogram(RunCombo* pParams, u16* panHistogramLastIndex, u16 nBestDelay, Histogram* pRecord)
+{
+    u16* pHistogramWinner = pParams->pHistogramWinner;
+    u16* p = panHistogramLastIndex;
+    u16* pLast = p;
+
+    if(pHistogramWinner <= g_anScratchHistogram)
+    {
+        // print("ERROR: pistogram has written outside scratch buffer");
+        // TODO: Make error codes for printout when we are back in text mode
+        ERROR_CODE = 1;
+        break();
+        return false;
+    }
+
+    while(p >= pHistogramWinner) // find the first of the last 1s in a streak of 1s. If none, use last element
+    {
+        if( *p > 1 )
+            break;
+
+        pLast = p;
+        p--;
+    }
+
+    u16 nLength = (u16)(pLast - pHistogramWinner + 1);
+
+    if(nLength>SCRATCH_HIST_SIZE)
+    {
+        // print("ERROR: histogram size going bananas");
+        // TODO: Make error codes for printout when we are back in text mode
+        ERROR_CODE = 2;
+        break();
+        return false;
+    }
+
+    // DBUG_LEN1 = (u8)nLength;
+
+    u16* pHistogram = myMalloc(nLength);
+
+    if(pHistogram == NULL)
+    {
+        // print("ERROR:Out of memory for histogram");
+        // TODO: Make error codes for printout when we are back in text mode
+        ERROR_CODE = 3;
+        break();
+        return false;
+    }
+
+    memcpy(pHistogram, pHistogramWinner, nLength * sizeof(u16));
+
+    pRecord->panHistogram = pHistogram;
+    pRecord->nHistogramLength = nLength;
+    pRecord->nHistogramStartValue = nBestDelay;
+
+    // Clean, but only what is needed
+    u16* pStart = pHistogramWinner - 1;
+    u16 nTotalLen = (u16)((u8*)panHistogramLastIndex - (u8*)pStart + 2);
+    memset(pStart, 0, nTotalLen);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 //
-void runTest(void)
+bool runTest(void)
 {
     RunCombo oParams;
+    RunCombo* pParams = &oParams;
 
-    oParams.uIterations = g_uInnerIterations;
+    oParams.uInnerIterations = g_uInnerIterations;
+    oParams.uOuterIterations = g_uOuterIterations;
 
-    for(u8 c = 0; c < arraysize(aEXECUTE_CMD); c++)
+    memset(g_anScratchHistogram, 0, sizeof(g_anScratchHistogram));
+    u16* panHistogramLastIndex = &g_anScratchHistogram[SCRATCH_HIST_SIZE-1];
+
+    // This adjusts a +1 cycle for T976x engines. This is be always "safe" for
+    // all measurements that are at least 19 (real HW are always above 32 here).
+    // For emulators, we can get lower numbers, we just need to be
+    // aware of logic around cycles: 12, 13, 15, 16, 18...
+    u16 nAdd = g_bHasT976xEngine ? 1 : 0;
+
+    for(u8 c = 0; c < NUM_TESTS; c++)
     {
 DBUG_N = c;
         oParams.uCmd = aEXECUTE_CMD[c];
 
-        for(u8 u = 0; u < arraysize(aHORZ_LEN); u++)
+        for(u8 u = 0; u < NUM_HORIZONTALS; u++)
         {
 DBUG_X = u;
             oParams.uW = aHORZ_LEN[u];
 
-            for(u8 v = 0; v < arraysize(aVERT_LEN); v++)
+            for(u8 v = 0; v < NUM_VERTICALS; v++)
             {
 DBUG_Y = v;
-                oParams.uH = aVERT_LEN[v];
-                oParams.nStartDelay = g_anDelays[c][u][v];
+                u16 nStartDelay = g_anResultDelays[c][u][v];
 
-                // if(v==1)
-                //     break();
+                pParams->uH = aVERT_LEN[v];
+                pParams->nStartDelay = nStartDelay; // note this value will be changed by the function
+                pParams->pHistogramWinner = (u16*)0x0000;
 
-                g_anDelays[c][u][v] = runTestCombo(&oParams);
+#if METHOD_SYNC==1
+                u16 nBestDelay = runTestComboNoHalts(&oParams, panHistogramLastIndex) + nAdd;
+#else
+                u16 nBestDelay = runTestCombo(&oParams, panHistogramLastIndex) + nAdd;
+#endif
+
+                g_anResultDelays[c][u][v] = nBestDelay;
+
+                if(!recordAndClearHistogram(pParams, panHistogramLastIndex, nBestDelay, &g_aoHistogram[c][u][v]))
+                    return false;
             }
         }
     }
+
+    return true;
 }
 
 // ---------------------------------------------------------------------------
 void runTests(void)
 {
-    vdpScreenEnabled(false);
+    switch(g_uCondition)
+    {
+        case ACTIVE_DISPLAY:
+            vdpScreenEnabled(true);
+            vdpSpritesEnabled(true);
+            break;
 
+        case ACTIVE_DISPLAY_NO_SPRITES:
+            vdpScreenEnabled(true);
+            vdpSpritesEnabled(false);
+            break;
+
+        case NO_DISPLAY:
+            vdpScreenEnabled(false);
+            vdpSpritesEnabled(false);
+            break;
+    }
+
+    halt(); // to be sure. I have seen issues in measurement right after VDP writes as the above!
     establishInitialDelays();
-
     runTest();
 
     vdpScreenEnabled(true);
+    vdpSpritesEnabled(true);
 }
 
 // ---------------------------------------------------------------------------
 // Outputs markdown (easy to paste into github or other markdown viewers)
-void printReport(void)
+void printReport(DateTime* pDateTime)
 {
     u8* szT976x = g_bHasT976xEngine ? " (T976x)" : "";
 
@@ -405,6 +592,12 @@ void printReport(void)
     sprintf(g_auBuffer,
             g_szTopLine1,
             g_szVersion,
+            pDateTime->nYear,
+            pDateTime->uMonth + 1,
+            pDateTime->uDay + 1,
+            pDateTime->uHours,
+            pDateTime->uMinutes,
+            pDateTime->uSeconds,
             g_auSysStr
            );
 
@@ -415,8 +608,17 @@ void printReport(void)
             aVDP_NAME[g_uVDPModel],
             szT976x,
             SCREEN_MODE,
+            g_aszConditionNames[g_uCondition],
             g_uInnerIterations==0?256: g_uInnerIterations,
             g_uOuterIterations
+           );
+
+    print(g_auBuffer);
+
+    sprintf(g_auBuffer,
+            g_szTopLine2x,
+            g_szSyncMethod,
+            g_szWaitMethod
            );
 
     print(g_auBuffer);
@@ -428,13 +630,14 @@ void printReport(void)
     }
 
     print(g_szEmptyLine);
+    print(g_szTitle1);
+    print(g_szEmptyLine);
 
     // Table top second -----------------------
 
-    u16 nAdd = g_bHasT976xEngine ? 1 : 0;
-    u32 ulSum = 0;
+    u32 ulTotal = 0;
 
-    for(u8 t = 0; t < arraysize(aEXECUTE_CMD); t++)
+    for(u8 t = 0; t < NUM_TESTS; t++)
     {
         sprintf(g_auBuffer,
                 g_szHeader1,
@@ -452,40 +655,128 @@ void printReport(void)
         print(g_auBuffer);
         print(g_szHeader2);
 
-        u16 nSum = 0;
+        u32 ulSum = 0;
 
         // Table data -----------------------------
-        for(u8 v = 0; v < arraysize(aVERT_LEN); v++)
+        for(u8 v = 0; v < NUM_VERTICALS; v++)
         {
-            for(u8 u = 0; u < arraysize(aHORZ_LEN); u++)
-                nSum += g_anDelays[t][u][v] + nAdd;
+            for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+                ulSum += (u32)g_anResultDelays[t][u][v];
 
             sprintf(g_auBuffer,
                     g_szResultLine,
                     aVERT_LEN[v],
-                    g_anDelays[t][0][v] + nAdd,
-                    g_anDelays[t][1][v] + nAdd,
-                    g_anDelays[t][2][v] + nAdd,
-                    g_anDelays[t][3][v] + nAdd,
-                    g_anDelays[t][4][v] + nAdd,
-                    g_anDelays[t][5][v] + nAdd,
-                    g_anDelays[t][6][v] + nAdd,
-                    g_anDelays[t][7][v] + nAdd
+                    g_anResultDelays[t][0][v],
+                    g_anResultDelays[t][1][v],
+                    g_anResultDelays[t][2][v],
+                    g_anResultDelays[t][3][v],
+                    g_anResultDelays[t][4][v],
+                    g_anResultDelays[t][5][v],
+                    g_anResultDelays[t][6][v],
+                    g_anResultDelays[t][7][v]
                 );
 
             print(g_auBuffer);
         }
 
-        ulSum += (u32)nSum;
+        ulTotal += ulSum;
 
         print(g_szEmptyLine);
-        sprintf(g_auBuffer, g_szSumLine,nSum);
+        sprintf(g_auBuffer, g_szSumLine, ulSum);
         print(g_auBuffer);
         print(g_szEmptyLine);
     }
 
-    sprintf(g_auBuffer, g_szTotalLine,ulSum);
+    sprintf(g_auBuffer, g_szTotalLine, ulTotal);
     print(g_auBuffer);    
+
+
+    print(g_szEmptyLine);
+    print(g_szTitle2);
+    print(g_szEmptyLine);
+
+
+    // Next table -----------------------
+
+    ulTotal = 0;
+
+    u8 szShortBuff[10];
+    const u8 szCyclesTemplate[] = "(%hu)%c";
+
+    u8 szShortBuff2[10];
+    const u8 szStub[] = "%hu ";
+
+    for(u8 t = 0; t < NUM_TESTS; t++)
+    {
+        sprintf(g_auBuffer,
+                g_szHistHeader1,
+                aTEST_NAME[t]
+               );
+
+        print(g_auBuffer);
+        print(g_szHistHeader2);
+
+        u32 ulSum = 0;
+
+        // Table data -----------------------------
+        for(u8 z = 0; z < (NUM_VERTICALS * NUM_HORIZONTALS); z++)
+        {
+            u8 u = z % NUM_HORIZONTALS;
+            u8 v = z / NUM_VERTICALS;
+
+            u8 uX = aHORZ_LEN[u];
+            u8 uY = aVERT_LEN[v];
+
+            Histogram* pHist = &g_aoHistogram[t][u][v];
+
+            u16 nHistogramStartValue;
+            g_auHistStrBuf[0] = '\0'; // reset string buffer
+
+            if(pHist->nHistogramLength == 0)
+            {
+                nHistogramStartValue = 0;
+                szShortBuff[0] = '(';
+                szShortBuff[1] = '?';
+                szShortBuff[2] = ')';
+                szShortBuff[3] = '\0';
+            }
+            else
+            {
+                nHistogramStartValue = pHist->nHistogramStartValue;
+
+                sprintf(szShortBuff, szCyclesTemplate, nHistogramStartValue, (char)'\0');
+                for(u16 x = 0; x < pHist->nHistogramLength; x++)
+                {
+                    u16 nTimes = pHist->panHistogram[x];
+                    ulSum += (u32)nTimes;
+                    sprintf(szShortBuff2, szStub, nTimes);
+                    strcat(g_auHistStrBuf, szShortBuff2);
+                }
+            }
+
+            sprintf(g_auBuffer,
+                    g_szHistResultLine,
+                    uX,
+                    uY,
+                    szShortBuff,
+                    g_auHistStrBuf
+                );
+
+            print(g_auBuffer);
+        }
+
+        ulTotal += ulSum;
+
+        print(g_szEmptyLine);
+        sprintf(g_auBuffer, g_szSumLine, ulSum);
+        print(g_auBuffer);
+        print(g_szEmptyLine);
+    }
+
+    sprintf(g_auBuffer, g_szTotalLine, ulTotal);
+    print(g_auBuffer);    
+
+
 }
 
 // ---------------------------------------------------------------------------
@@ -507,13 +798,8 @@ void calcDuration(DateTime* p1, DateTime* p2, DateTime* pDuration)
 }
 
 // ---------------------------------------------------------------------------
-// Do the test. If interactive/screen mode, enable 26,5 lines for output +
-// wait for keypress before returning. When output is redirected to file,
-// we don't do this.
-u8 main(char** argv, u8 argc)
+u8 commandLineParameters(char** argv, u8 argc)
 {
-    initVarsAndRig();
-
     // ------------------------------------
     // Check params
     if(argc > 0)
@@ -526,6 +812,18 @@ u8 main(char** argv, u8 argc)
             {
                 printHelp();
                 return 0;
+            }
+            else if(strcmp(argv[n], "-1") == 0)
+            {
+                g_uCondition = 0;
+            }
+            else if(strcmp(argv[n], "-2") == 0)
+            {
+                g_uCondition = 1;
+            }
+            else if(strcmp(argv[n], "-3") == 0)
+            {
+                g_uCondition = 2;
             }
             else if(strcmp(argv[n], "-i") == 0)
             {
@@ -574,6 +872,29 @@ u8 main(char** argv, u8 argc)
         }
     }
 
+    return 2;
+}
+
+// ---------------------------------------------------------------------------
+// Do the test. If interactive/screen mode, enable 26,5 lines for output +
+// wait for keypress before returning. When output is redirected to file,
+// we don't do this.
+u8 main(char** argv, u8 argc)
+{
+    DateTime oTimestamp0;
+    DateTime oTimestamp1;
+    DateTime oTimestamp2;
+    DateTime oDurationResult = {0,0,0,0,0,0};
+
+    initVarsAndRig();
+
+    if(argc > 0)
+    {
+        u8 ret = commandLineParameters(argv, argc);
+        if(ret < 2)
+            return ret;
+    }
+
     // ------------------------------------
     // Initialize
     u8 uType = getMSXType();
@@ -604,29 +925,27 @@ u8 main(char** argv, u8 argc)
         }
     }
 
-    vdpSet212Lines(false); // just to make sure
     disableInterrupt();
     vdpEnableLineInterruptNI(false); // to be sure
     enableInterrupt();
+
     detectT976xEngine(); // only to be called i z80 mode and no line interrupts
+    vdpSet212Lines(true); // due to using line interrupts, we need as many lines as possible
 
     bool hasScreenOutput = userOutputsToScreen();
 
-    setCustomISR(); 
-
-    u8 uPrevScrMode = changeMode(SCREEN_MODE);
+    u8 uPrevScrMode = changeMode(SCREEN_MODE); // BIOS returns in DI
+    enableInterrupt();
 
     // ---------------------------------------------
     // READY! Set conditions for tests and run tests
-    vdpSpritesEnabled(true);
-
-    getTime(&g_oTimestamp0);
+    getTime(&oTimestamp0);
     runTests();
-    getTime(&g_oTimestamp1);
+    getTime(&oTimestamp1);
 
     // ----------------------------------
     // Start cleanup before returning to DOS
-    restoreOriginalISR();
+    vdpSet212Lines(true); // due to using line interrupts, we need as many lines as possible
 
     if(hasScreenOutput) // prepare wide and large screen when not redirecting to file
     {
@@ -646,21 +965,28 @@ u8 main(char** argv, u8 argc)
 
     // ----------------------------------
     // Show summary
-    printReport();
+    printReport(&oTimestamp0);
 
     // ----------------------------------
     // Show duration of test and print
-    getTime(&g_oTimestamp2);
+    getTime(&oTimestamp2);
 
-    DateTime oDuration = {0,0,0,0,0,0};
-
-    calcDuration(&g_oTimestamp0, &g_oTimestamp1, &oDuration);
-    sprintf(g_auBuffer, g_szDurationTest, oDuration.uMinutes, oDuration.uSeconds);
+    calcDuration(&oTimestamp0, &oTimestamp1, &oDurationResult);
+    sprintf(g_auBuffer, g_szDurationTest, oDurationResult.uMinutes, oDurationResult.uSeconds);
     print(g_auBuffer);
 
-    calcDuration(&g_oTimestamp1, &g_oTimestamp2, &oDuration);
-    sprintf(g_auBuffer,g_szDurationPrint,oDuration.uMinutes,oDuration.uSeconds);
+    calcDuration(&oTimestamp1, &oTimestamp2, &oDurationResult);
+    sprintf(g_auBuffer,g_szDurationPrint,oDurationResult.uMinutes,oDurationResult.uSeconds);
     print(g_auBuffer);
+
+    // // debugging timestamps
+    // const u8 const template[] = "\r\nTimestamp (YYYY-DD-MM HH:MM:SS) %d: %04hu-%02d-%02d %02d:%02d:%02d  \r\n";
+    // sprintf(g_auBuffer, template, 0, oTimestamp0.nYear, oTimestamp0.uMonth, oTimestamp0.uDay, oTimestamp0.uHours, oTimestamp0.uMinutes, oTimestamp0.uSeconds);
+    // print(g_auBuffer);
+    // sprintf(g_auBuffer, template, 1, oTimestamp1.nYear, oTimestamp1.uMonth, oTimestamp1.uDay, oTimestamp1.uHours, oTimestamp1.uMinutes, oTimestamp1.uSeconds);
+    // print(g_auBuffer);
+    // sprintf(g_auBuffer, template, 2, oTimestamp2.nYear, oTimestamp2.uMonth, oTimestamp2.uDay, oTimestamp2.uHours, oTimestamp2.uMinutes, oTimestamp2.uSeconds);
+    // print(g_auBuffer);
 
     return 0;
 }

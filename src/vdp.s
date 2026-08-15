@@ -35,6 +35,18 @@
 ; EXTERNAL REFERENCES
 
 ; ----------------------------------------------------------------------------
+; Debug function
+; Assumes:
+; IN: 		A - char color
+; Modifies: A
+;-------------------------
+vdpSetBorderColorNI::
+	out	    (VDPPORT1),a        ; a : [ 0..15 ]
+	ld	    a,#128+7
+	out	    (VDPPORT1),a
+    ret
+
+; ----------------------------------------------------------------------------
 ; MODIFIES: AF
 ;
 ; bool getPALRefreshRate();
@@ -81,6 +93,7 @@ setup_line_interrupt_done:
 
 ; ----------------------------------------------------------------------------
 ; We also change the number of lines for screen modes
+; https://www.msx.org/wiki/VDP_Mode_Registers#Control_Register_9_.28V9938.2F9958.29
 ; MODIFIES: AF
 ;
 ; void vdpSet212Lines(bool b212);

@@ -40,7 +40,7 @@ G7 is screen 8.
 ## Requirements
 
 * **Run:** MSX2 or higher, MSX-DOS
-* **Build:** SDCC v4.2 or higher (tested with v4.6)
+* **Build:** SDCC v4.2 or higher (tested with v4.5.24)
 
 ## Attributions
 
