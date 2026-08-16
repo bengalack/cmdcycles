@@ -11,12 +11,10 @@
 .include "macros_constants.inc"
 
 ; ---------------------------------------------------------------------------
-; Include shared constants!
+; SHARED DEFINES
 ; .ifeq / SYMBOLNAME - VALUE_TO_CHECK_FOR / .endif
-.macro DEF sym eq val ?whatever
-.define sym /val/
-.endm
-.include "shared_constants.def"
+;
+.define METHOD_WAIT /2/                         ; 0: No wait, 1: Counter, 2: Random (R-reg)
 
 ; ----------------------------------------------------------------------------
 ; LOCAL CONSTANTS
@@ -530,6 +528,7 @@ _getInitialDelayNI::
 
     ; ALIGN WITH RASTER
     ld      a,(uIYH)
+    ld      iyh,a
     call    secureActiveArea ; this one sets status reg #2
     ld      a,iyh
     ld      (uIYH),a
@@ -606,9 +605,10 @@ setVDPParams:
     push    bc
     push    de
     push    hl
-    ld      e,0(ix)
-    ld      d,1(ix)
-    call    setVDPCmdParamsNI_asm ; E: width, D: height (MODIFIES: AF, C, DE, HL)
+    ld      d,0(ix)
+    ld      e,1(ix)
+    ld      a,c                     ; command (for testing on it)
+    call    setVDPCmdParamsNI_asm   ; D: width, E: height (MODIFIES: AF, C, DE, HL)
     pop     hl
     pop     de
     pop     bc
@@ -903,19 +903,12 @@ local_knob:
     exx
 .endm
 
-; .macro histogram_backtrack
-;     exx
-;     inc     hl
-;     inc     hl
-;     exx
-; .endm
-
 ; -------------------------------------------------------------
 ; Called in EI
 ; Assumes anHistogram is already initialized to 0. 
 ; No HALT, just switching status registers all the time and
 ; checking if we are in active area or not. Not setting
-; custome ISR.
+; custom ISR.
 ; If value proves to work. we will try one value below, at least
 ; <x> amount of times. Stop when <x> attempts all fail (busy).
 ; 
@@ -1122,6 +1115,6 @@ goodbye:
 ; ----------------------------------------------------------------------------
     .area _DATA
 
-uIYH:    
+uIYH::
     .db 0                       ; store across C-functions (to make multiple algorithms use the same code)
 

@@ -34,14 +34,8 @@
 
 // Defines shared with ASM files ---------------------------------------------
 //
-#ifndef CONSTANTS_H
-#define CONSTANTS_H
-#define DEF
-enum {
-#include "shared_constants.def"
-};
-#undef DEF
-#endif
+#define METHOD_WAIT         2           //; 0: No wait, 1: Counter, 2: Random (R-reg)
+#define VDPCMD_LINE		    0b01110000  // LINE
 
 // Typedefs & defines --------------------------------------------------------
 //
@@ -60,8 +54,6 @@ enum {
 #define VDPCMD_YMMM         0b11100000 // FASTEST COPY BLOCK (only Y differs)
 #define VDPCMD_HMMV		    0b11000000 // FAST FILL (2 and 2 pix horz)
 
-// #define VDPCMD_LINE		    0b01110000 // LINE
-
 #define LOGICAL_OP_IMP      0b0000 // DC=SC
 #define LOGICAL_OP_AND      0b0001 // DC=SCxDC
 #define LOGICAL_OP_OR       0b0010 // DC=SC+DC
@@ -74,17 +66,16 @@ enum {
 #define LOGICAL_OP_TEOR     0b1011 // if SC=0 then DC=DC else DC=SCxDC+SCxDC
 #define LOGICAL_OP_TNOT     0b1100 // if SC=0 then DC=DC else DC=SC
 
-#define NUM_TESTS           1
-// #define NUM_TESTS           5
+// #define NUM_TESTS           1
+#define NUM_TESTS           6
 #define NUM_HORIZONTALS     8
 #define NUM_VERTICALS       8
 
 #define INITIAL_LOOP_CYCLES 33      // max size: 63 (!)
 #define SCRATCH_HIST_SIZE   1024 
 #define MY_HEAP_SIZE        28000   // size in bytes
-#define LEEWAY              50      // we need to add some buffer to the initial delay to avoid having the real test MISS hitting the initial measurement (has happened)
+#define LEEWAY              150     // add a buffer to the initial delay to avoid having the real test MISS hitting the initial measurement (happens on turboR in emulator)
 #define METHOD_SYNC         1       // 0: ISR, 1: LINE INTS
-// #define METHOD_WAIT         1       // 0: No wait, 1: Counter, 2: Random (R-reg)
 
 // #define DEFAULT_INNER_LOOPS 32  // this one is tested 16 times (16 x 16 = 256)
 #define DEFAULT_INNER_LOOPS 64  // 0 = 256
@@ -104,12 +95,12 @@ typedef unsigned long       u32;
 #define MAX_SYS_LEN         (61+1-22) // minus datestring
 
 // -------------------------------------------------------------------------
-// typedef union {
-// 	struct {
-// 		u8  w,h;
-// 	};
-// 	u16 wh;
-// } COMBO2BYTES;
+typedef union {
+	struct {
+		u8  w,h;
+	};
+	u16 wh;
+} COMBO2BYTES;
 
 typedef struct {
     u8                      uW;
@@ -164,7 +155,7 @@ extern u16      runTestComboNoHalts(RunCombo* p, u16* panHistogramLastIndex);
 extern u8       getInitialDelayNI(u8 uVDP_CMD);
 
 // from vdp.s
-extern void     setVDPCmdParamsNI(u8 w, u8 h);
+extern void     setVDPCmdParamsNI(u8 uCmd, u16 oHW); // oWH: COMBO2BYTES (u16)
 // extern void     executeCmdWithPreppedParamsNI(u8 uCmd);
 extern bool     getPALRefreshRate(void);
 extern void     setPALRefreshRate(bool bEnabled);
@@ -228,29 +219,29 @@ const u8                g_szWaitMethod[]         = "Random (R-reg)";
 const u8                g_szWaitMethod[]         = "No wait";
 #endif
 
+                                                //"                             " // 29 chars (turbo r)
 const u8                g_szHelptext[]          = "Usage: cmdcycle [opt][sys]\r\n"
-                                                "\r\n"
-                                                "Measure the duration of VDP\r\n"
-                                                "command in MSX Z80 cycles\r\n"
-                                                "(outside VBLANK area).\r\n"
-                                                "Output format is markdown.\r\n"
-                                                "Use 80 char width for msx\r\n"
-                                                "viewing. Written to stdout\r\n"
-                                                "unless redirected.\r\n"
-                                                "\r\n"
-                                                "Version: %s\r\n"
-                                                "\r\n"
-                                                "Options (opt):\r\n"
-                                                " -h Show this help message\r\n"
-                                                // " -5 Screen 5 (default: 8)\r\n"
-                                                " -o n Outer loops(%d)\r\n"
-                                                " -i n Inner loops(%d)\r\n"
-                                              //"                             " // 29 chars (turbo r)
-                                                " -1 Mode: normal (default)\r\n"
-                                                " -2 Mode: no sprites\r\n"
-                                                " -3 Mode: no screen\r\n"
-                                                "\r\n"
-                                                "sys: Show sys name in report\r\n";
+                                                  "\r\n"
+                                                  "Measure the duration of VDP\r\n"
+                                                  "command in MSX Z80 cycles\r\n"
+                                                  "(outside VBLANK area).\r\n"
+                                                  "Format is markdown, written\r\n"
+                                                  "to stdout unless redirected.\r\n"
+                                                  "\r\n"
+                                                  "Version: %s\r\n"
+                                                  "Sync: %s\r\n"
+                                                  "Wait: %s\r\n"
+                                                  "\r\n"
+                                                  "Options (opt):\r\n"
+                                                  " -h Show this help message\r\n"
+                                                  // " -5 Screen 5 (default: 8)\r\n"
+                                                  " -o n Outer loops (%d)\r\n"
+                                                  " -i n Inner loops (%d)\r\n"
+                                                  " -1 Mode: normal (default)\r\n"
+                                                  " -2 Mode: no sprites\r\n"
+                                                  " -3 Mode: no screen\r\n"
+                                                  "\r\n"
+                                                  "sys: Show sys name in report";
 
 const u8* const         aVDP_NAME[32] =
                         {
@@ -290,22 +281,22 @@ const u8* const         aVDP_NAME[32] =
 
 const u8* const         aTEST_NAME[NUM_TESTS] = \
                         {
-                             "Copy: LMMM-TEOR"
-                            ,"Copy: HMMM"
-                            ,"Copy: YMMM"
-                            ,"Fill: HMMV"
-                            ,"Fill: LMMV"
-                            // ,"Line     "
+                            "Copy: LMMM-TEOR",
+                            "Copy: HMMM",
+                            "Copy: YMMM",
+                            "Fill: HMMV",
+                            "Fill: LMMV",
+                            "Line: LINE-TEOR"
                         };
 
 const u8 const          aEXECUTE_CMD[NUM_TESTS] = \
                         {
-                             VDPCMD_LMMM | LOGICAL_OP_TEOR  // just random logical op (which does not become 0)
-                            ,VDPCMD_HMMM
-                            ,VDPCMD_YMMM
-                            ,VDPCMD_HMMV
-                            ,VDPCMD_LMMV | LOGICAL_OP_TOR   // just random logical op  (which does not become 0)
-                            // ,VDPCMD_LINE | LOGICAL_OP_EOR   // just random logical op
+                            VDPCMD_LMMM | LOGICAL_OP_TEOR,  // just random logical op (which does not become 0)
+                            VDPCMD_HMMM,
+                            VDPCMD_YMMM,
+                            VDPCMD_HMMV,
+                            VDPCMD_LMMV | LOGICAL_OP_TOR,   // just random logical op  (which does not become 0)
+                            VDPCMD_LINE | LOGICAL_OP_EOR    // just random logical op
                         };
 
 const u8 const          aHORZ_LEN[NUM_HORIZONTALS] = 
@@ -394,6 +385,8 @@ void initVarsAndRig(void)
 
     memset(g_anResultDelays, 0, sizeof(g_anResultDelays));
     memset(g_aoHistogram, 0, sizeof(g_aoHistogram));
+
+    ERROR_CODE = 0xff;
 }
 
 // ---------------------------------------------------------------------------
@@ -401,16 +394,25 @@ void initVarsAndRig(void)
 //
 void establishInitialDelays(void)
 {
+    u16 nMultiplier = (u16)INITIAL_LOOP_CYCLES;
+    if(g_bHasT976xEngine)
+        nMultiplier += 1; // T976x engines are +1 cycle in the command
+
     disableInterrupt();
     prepareLineInterruptsNI(); // sets status reg 2
     for(u8 c = 0; c < NUM_TESTS; c++)
     {
         for(u8 u = 0; u < NUM_HORIZONTALS; u++)
         {
+            COMBO2BYTES oWH;
+            oWH.w = aHORZ_LEN[u];
             for(u8 v = 0; v < NUM_VERTICALS; v++)
             {
-                setVDPCmdParamsNI(aHORZ_LEN[u], aVERT_LEN[v]);
-                g_anResultDelays[c][u][v] = (u16)(getInitialDelayNI(aEXECUTE_CMD[c]) * (u16)INITIAL_LOOP_CYCLES) + (u16)LEEWAY; // obeys active area restriction using line interrupts.
+                oWH.h = aVERT_LEN[v];
+                u8 cCMD = aEXECUTE_CMD[c];
+
+                setVDPCmdParamsNI(cCMD, oWH.wh); // packing params to avoid using stack for parameters
+                g_anResultDelays[c][u][v] = (u16)(getInitialDelayNI(cCMD) * nMultiplier) + (u16)LEEWAY; // obeys active area restriction using line interrupts.
             }
         }
     }
@@ -445,7 +447,6 @@ bool recordAndClearHistogram(RunCombo* pParams, u16* panHistogramLastIndex, u16 
     if(pHistogramWinner <= g_anScratchHistogram)
     {
         // print("ERROR: pistogram has written outside scratch buffer");
-        // TODO: Make error codes for printout when we are back in text mode
         ERROR_CODE = 1;
         break();
         return false;
@@ -462,23 +463,19 @@ bool recordAndClearHistogram(RunCombo* pParams, u16* panHistogramLastIndex, u16 
 
     u16 nLength = (u16)(pLast - pHistogramWinner + 1);
 
-    if(nLength>SCRATCH_HIST_SIZE)
-    {
-        // print("ERROR: histogram size going bananas");
-        // TODO: Make error codes for printout when we are back in text mode
-        ERROR_CODE = 2;
-        break();
-        return false;
-    }
-
-    // DBUG_LEN1 = (u8)nLength;
+    // if(nLength>SCRATCH_HIST_SIZE) // makes sense only if we allow smaller size than SCRATCH_HIST_SIZE
+    // {
+    //     // print("ERROR: histogram size going bananas");
+    //     ERROR_CODE = 2;
+    //     break();
+    //     return false;
+    // }
 
     u16* pHistogram = myMalloc(nLength);
 
     if(pHistogram == NULL)
     {
-        // print("ERROR:Out of memory for histogram");
-        // TODO: Make error codes for printout when we are back in text mode
+        // print("ERROR: Out of memory for histogram");
         ERROR_CODE = 3;
         break();
         return false;
@@ -575,7 +572,9 @@ void runTests(void)
     }
 
     halt(); // to be sure. I have seen issues in measurement right after VDP writes as the above!
+    
     establishInitialDelays();
+
     runTest();
 
     vdpScreenEnabled(true);
@@ -782,7 +781,7 @@ void printReport(DateTime* pDateTime)
 // ---------------------------------------------------------------------------
 void printHelp(void)
 {
-    sprintf(g_auBuffer, g_szHelptext, g_szVersion, DEFAULT_OUTER_LOOPS, DEFAULT_INNER_LOOPS==0 ? 256 : DEFAULT_INNER_LOOPS);
+    sprintf(g_auBuffer, g_szHelptext, g_szVersion, g_szSyncMethod, g_szWaitMethod, DEFAULT_OUTER_LOOPS, DEFAULT_INNER_LOOPS==0 ? 256 : DEFAULT_INNER_LOOPS);
     print(g_auBuffer);
 }
 
@@ -945,7 +944,7 @@ u8 main(char** argv, u8 argc)
 
     // ----------------------------------
     // Start cleanup before returning to DOS
-    vdpSet212Lines(true); // due to using line interrupts, we need as many lines as possible
+    vdpSet212Lines(false);
 
     if(hasScreenOutput) // prepare wide and large screen when not redirecting to file
     {
@@ -987,6 +986,13 @@ u8 main(char** argv, u8 argc)
     // print(g_auBuffer);
     // sprintf(g_auBuffer, template, 2, oTimestamp2.nYear, oTimestamp2.uMonth, oTimestamp2.uDay, oTimestamp2.uHours, oTimestamp2.uMinutes, oTimestamp2.uSeconds);
     // print(g_auBuffer);
+
+    if(ERROR_CODE != 0xff)
+    {
+        sprintf(g_auBuffer, "ERROR: %d\r\n", ERROR_CODE);
+        print(g_auBuffer);
+        break();
+    }
 
     return 0;
 }

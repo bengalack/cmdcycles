@@ -1,2 +1,0 @@
-DEF METHOD_WAIT = 3, //; Must be on this format. Spaces are important!
-DEF METHOD_SYLL = 2

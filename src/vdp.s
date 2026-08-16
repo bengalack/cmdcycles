@@ -10,6 +10,12 @@
 
 .include "macros_constants.inc"
 
+; ---------------------------------------------------------------------------
+; SHARED DEFINES
+; .ifeq / SYMBOLNAME - VALUE_TO_CHECK_FOR / .endif
+;
+.define VDPCMD_LINE /0b01110000/                ; only upper nibble (lower may vary)
+
 ; ----------------------------------------------------------------------------
 ; LOCAL CONSTANTS
 
@@ -203,33 +209,66 @@ setup_done2:
     ret
 
 ; -----------------------------------------------------------------------------
+; General for block copy, fill and line. Line does not really use 32-35,
+; and YMMM does not use 40-41.
 ; Does everything at (256-w,256-h) in page 0 => same place in page 1
-; We pass the planned command, but we do NOT execute it
-; This routine has 16 outs, ie. +16 outs on some VDPs
-; MODIFIES: AF, C, DE, HL
+; We pass the planned command, but we do NOT execute it.
+; This routine has 16 outs (12 for lines), ie. +16 (12 for lines) outs on some VDPs
+; MODIFIES: AF, BC, DE, HL
 ; void setVDPCmdParamsNI(u8 w, u8 h); A, L 
+; void setVDPCmdParamsNI(u8 uCmd, u16 oHW); // oWH: COMBO2BYTES.  A, DE 
+
 _setVDPCmdParamsNI::
 
-    ; (HEIGHT in D, AND WIDTH in E)
-    ld      e,a
-    ld      d,l
+    ; (HEIGHT in E, AND WIDTH in D)
+    ; ld      e,a
+    ; ld      d,l
 
-setVDPCmdParamsNI_asm:: ; call from asm using E: width, D: height
-    ; Plan: Put NXL in E, NYL in D, SXL in H, SYL in L
+setVDPCmdParamsNI_asm:: ; call from asm using D: width, E: height, A = CMD (just for testing)
+    ; Plan: Put NXL in D, NYL in E, SXL in H, SYL in L
 
-	ld    	a,#32				; Set "Stream mode"
-    vdpWriteReg 17
+	ld    	c, #VDPSTREAM
 
+    ex      af, af'
+
+    ; Set common upper left corner for all
     xor     a
-    sub     e
+    sub     d
     ld      h, a
 
     xor     a
-    sub     d
+    sub     e
     ld      l, a
 
-done_set_YMMM:
-	ld    	c, #VDPSTREAM
+    ex      af, af'
+
+    ; do things differently for line command?
+    and     #0b11110000
+    cp      #VDPCMD_LINE
+    jp      nz,not_a_line_command
+
+line_command:
+    ld      b,#1
+    ld      a,d
+    cp      e                   ; if width < height, swap NXL (long) and NYL (short)
+    jr      nc,no_swap
+    
+swap:
+    ld      d,e
+    ld      e,a
+    inc     b
+    ; FALL THROUGH
+
+no_swap:
+    dec     b                   ; b=0, for all except vertical inclined lines
+	ld    	a,#36				; Set "Stream mode" from reg 36
+    vdpWriteReg 17
+    jp      line_goes_from_here
+
+not_a_line_command:
+    ld      b,#0
+	ld    	a,#32				; Set "Stream mode" from reg 32
+    vdpWriteReg 17
 
     ld      a,h
 	out     (VDPSTREAM),a       ;SXL (32) - IGNORED IN YMMM
@@ -243,6 +282,7 @@ done_set_YMMM:
     xor     a
 	out     (VDPSTREAM),a       ;SYH (35) (page)
 
+line_goes_from_here:
     ld      a,h
 	out     (VDPSTREAM),a       ;DXL (36) - YMMM: BOTH SOURCE AND DESTINATION
 
@@ -255,22 +295,23 @@ done_set_YMMM:
     ld      a,#1                ;=> page 1
 	out     (VDPSTREAM),a       ;DYH (39) (page)
 
-    ld      a,e                 ;WIDTH
-	out     (VDPSTREAM),a       ;NXL (40) - IGNORED IN YMMM
+    ld      a,d                 ;WIDTH or LONG
+	out     (VDPSTREAM),a       ;NXL or LONG-L (40) - IGNORED IN YMMM
 
     xor     a
-	out     (VDPSTREAM),a       ;NXH (41) - IGNORED IN YMMM
+	out     (VDPSTREAM),a       ;NXH or LONG-H (41) - IGNORED IN YMMM
 
-    ld      a,d                 ;HEIGHT
-	out     (VDPSTREAM),a       ;NYL (42)
+    ld      a,e                 ;HEIGHT or SHORT
+	out     (VDPSTREAM),a       ;NYL or SHORT-L (42)
 
     xor     a
-	out     (VDPSTREAM),a       ;NYH (43)
+	out     (VDPSTREAM),a       ;NYH or SHORT-H (43)
 
-    dec     a                   ;set color 255, for visual debugging
+    ld a,r                      ; for debugging
+    ; dec     a                   ;set color 255, for visual debugging
 	out     (VDPSTREAM),a       ;COLOR (44)
 
-    xor     a                   ;sets directions to rightwards and downwards
+    ld      a,b                 ;sets directions to rightwards and downwards, and MAYBE he MAJ flag for lines
 	out     (VDPSTREAM),a       ;ARG (45)
 
 	ret
