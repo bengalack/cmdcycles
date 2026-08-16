@@ -72,8 +72,10 @@
 #define NUM_VERTICALS       8
 
 #define INITIAL_LOOP_CYCLES 33      // max size: 63 (!)
-#define SCRATCH_HIST_SIZE   1024 
+#define SCRATCH_HIST_SIZE   1024
 #define MY_HEAP_SIZE        28000   // size in bytes
+#define BUFFER_SIZE         1024    // size of g_auBuffer, in bytes
+#define HIST_STR_BUF_SIZE   1024    // size of g_auHistStrBuf, in bytes
 #define LEEWAY              150     // add a buffer to the initial delay to avoid having the real test MISS hitting the initial measurement (happens on turboR in emulator)
 #define METHOD_SYNC         1       // 0: ISR, 1: LINE INTS
 
@@ -190,7 +192,7 @@ const u8                g_szHeader2[]           = "|--------------------|-----:|
 const u8                g_szResultLine[]        = "| %d                  | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu | %4hu |\r\n";
 const u8                g_szHistHeader1[]       = "| %-15s    |                                                       |\r\n";
 const u8                g_szHistHeader2[]       = "|--------------------|:------------------------------------------------------|\r\n";
-const u8                g_szHistResultLine[]    = "| %dx%d %-6s         | %s\r\n"; // %6s is like "(32)  " or "(1440)"
+const u8                g_szHistResultLine[]    = "| %dx%d %-6s         | "; // %6s is like "(32)  " or "(1440)". The histogram string is printed separately
 
 const u8                g_szSumLine[]           = "Sum: %lu  \r\n";
 const u8                g_szTotalLine[]         = "Grand total: %lu  \r\n";
@@ -325,8 +327,8 @@ const u8 const          aVERT_LEN[NUM_VERTICALS] =
 
 // RAM variables -------------------------------------------------------------
 //
-u8                      g_auBuffer[ 256 ];      // temp/general buffer here to avoid stack explosion
-u8                      g_auHistStrBuf[ 256 ];  // temp/general buffer here to avoid stack explosion
+u8                      g_auBuffer[ BUFFER_SIZE ];          // temp/general buffer here to avoid stack explosion
+u8                      g_auHistStrBuf[ HIST_STR_BUF_SIZE ];// temp/general buffer here to avoid stack explosion
 void* __at(0x0039)      g_pInterrupt;           // We assume that 0x0038 already holds 0xC3 (JP) in dos mode at startup
 void*                   g_pInterruptOrg;
 u8                      g_uCurrentInterruptLine;
@@ -423,14 +425,18 @@ void establishInitialDelays(void)
 
 // ---------------------------------------------------------------------------
 // 
+// nSize is a number of u16 elements, NOT bytes
 u16* myMalloc(u16 nSize)
 {
-    u16* p = g_pHeapHead;
+    u16 nBytes = nSize * sizeof(u16);
+    u16 nUsed  = (u16)((u8*)g_pHeapHead - MY_HEAP);
 
-    if((u16)g_pHeapHead - (u16)MY_HEAP + nSize > MY_HEAP_SIZE)
+    if(nBytes > (u16)(MY_HEAP_SIZE - nUsed)) // subtraction, so the u16 math cannot wrap
         return NULL; // out of memory
 
-    g_pHeapHead += nSize;
+    u16* p = g_pHeapHead;
+
+    g_pHeapHead += nSize; // u16* arithmetic, so this advances nBytes bytes
 
     return p;
 }
@@ -729,7 +735,12 @@ void printReport(DateTime* pDateTime)
             Histogram* pHist = &g_aoHistogram[t][u][v];
 
             u16 nHistogramStartValue;
-            g_auHistStrBuf[0] = '\0'; // reset string buffer
+
+            u8* pHistTail  = g_auHistStrBuf; // append position, so we never rescan the string
+            *pHistTail = '\0';               // reset string buffer
+
+            // Last position we may start an append at, leaving room for "..." + terminating zero
+            u8* pHistLimit = g_auHistStrBuf + HIST_STR_BUF_SIZE - 4;
 
             if(pHist->nHistogramLength == 0)
             {
@@ -742,14 +753,33 @@ void printReport(DateTime* pDateTime)
             else
             {
                 nHistogramStartValue = pHist->nHistogramStartValue;
+                bool bTruncated = false;
 
                 sprintf(szShortBuff, szCyclesTemplate, nHistogramStartValue, (char)'\0');
                 for(u16 x = 0; x < pHist->nHistogramLength; x++)
                 {
                     u16 nTimes = pHist->panHistogram[x];
-                    ulSum += (u32)nTimes;
+                    ulSum += (u32)nTimes; // always, so the sums stay correct even when truncating
+
+                    if(bTruncated)
+                        continue;
+
                     sprintf(szShortBuff2, szStub, nTimes);
-                    strcat(g_auHistStrBuf, szShortBuff2);
+
+                    u8 uLen = (u8)strlen(szShortBuff2);
+
+                    if(pHistTail + uLen > pHistLimit) // no room for this entry plus a later "..."
+                    {
+                        pHistTail[0] = '.';
+                        pHistTail[1] = '.';
+                        pHistTail[2] = '.';
+                        pHistTail[3] = '\0';
+                        bTruncated = true;
+                        continue;
+                    }
+
+                    strcpy(pHistTail, szShortBuff2); // writes uLen chars + terminating zero
+                    pHistTail += uLen;
                 }
             }
 
@@ -757,11 +787,12 @@ void printReport(DateTime* pDateTime)
                     g_szHistResultLine,
                     uX,
                     uY,
-                    szShortBuff,
-                    g_auHistStrBuf
+                    szShortBuff
                 );
 
             print(g_auBuffer);
+            print(g_auHistStrBuf);
+            print(g_szEmptyLine); // "\r\n"
         }
 
         ulTotal += ulSum;
