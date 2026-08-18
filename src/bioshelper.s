@@ -14,7 +14,7 @@
 ; SHARED DEFINES
 ; .ifeq / SYMBOLNAME - VALUE_TO_CHECK_FOR / .endif
 ;
-.define METHOD_WAIT /2/                         ; 0: No wait, 1: Counter, 2: Random (R-reg)
+.define METHOD_WAIT /1/                         ; 0: No wait, 1: Counter, 2: Random (R-reg)
 
 ; ----------------------------------------------------------------------------
 ; LOCAL CONSTANTS
@@ -46,72 +46,72 @@
 ; ----------------------------------------------------------------------------
 ; EXTERNAL REFERENCES (allowing all/any using the -g flag)
  
-; ; ----------------------------------------------------------------------------
-; ; This special interrupt routine leaves with S#2 set!
-; ; Uses 
-; ; Totals:  cycles
-; ; MODIFIES: (No registers of course!)
-; _customISR::
-;     push	af
-;     push    hl
+; ----------------------------------------------------------------------------
+; This special interrupt routine leaves with S#2 set!
+; Uses 
+; Totals:  cycles
+; MODIFIES: (No registers of course!)
+_customISR::
+    push	af
+    push    hl
 
-;     ld      hl,#_g_uCurrentInterruptLine
+    ld      hl,#uCurrentInterruptLine
 
-;     ; the normal int we must read - check if this was a line interrupt or not
-;     xor 	a                       ; get status for sreg 0 (we anyway need to reset sreg)
-;     vdpWriteReg 15
-;     nop								; obey speed
-;     in		a, (VDPPORT1)			; read VDP S#n to reset VBLANK IRQ (F flag is set on VBLANK int)
-;                                     ; bit 7	bit 6	bit 5	bit 4	bit 3	bit 2	bit 1	bit 0	
-;                                     ; F	    5S	    C	    5/9SN
-;     rla
+    ; the normal int we must read - check if this was a line interrupt or not
+    xor 	a                       ; get status for sreg 0 (we anyway need to reset sreg)
+    vdpWriteReg 15
+    nop								; obey speed
+    in		a, (VDPPORT1)			; read VDP S#n to reset VBLANK IRQ (F flag is set on VBLANK int)
+                                    ; bit 7	bit 6	bit 5	bit 4	bit 3	bit 2	bit 1	bit 0	
+                                    ; F	    5S	    C	    5/9SN
+    rla
     
-;     jp      nc,test_line_interrupt
+    jp      nc,test_line_interrupt
 
-;     xor     a
-;     ld      (_g_bACTIVE_AREA),a     ; we are in VBLANK, so set this to false
+    xor     a
+    ld      (bACTIVE_AREA),a     ; we are in VBLANK, so set this to false
 
-;     jp      set_line_interrupt
+    jp      set_line_interrupt
 
-; test_line_interrupt:
-; 	ld		a, #1
-;     vdpWriteReg 15
-;     nop
-; 	in		a, (VDPPORT1)			; Clear line int flag.
+test_line_interrupt:
+	ld		a, #1
+    vdpWriteReg 15
+    nop
+	in		a, (VDPPORT1)			; Clear line int flag.
 
-;     ld      a,(hl)
-;     or      a
+    ld      a,(hl)
+    or      a
 
-;     jp      z,set_line_interrupt_x  ; if we have line 0 set, the next is line: SECOND_LINE_INT (a)
+    jp      z,set_line_interrupt_x  ; if we have line 0 set, the next is line: SECOND_LINE_INT (a)
 
-;     ; if we get here, bottommost line int is reached, and we turn off line interrupts
-;     xor     a
-;     ld      (_g_bACTIVE_AREA),a
-;     call    _vdpEnableLineInterruptNI ; disable them (routine in vdp.s)
-;     jp      leave_isr
+    ; if we get here, bottommost line int is reached, and we turn off line interrupts
+    xor     a
+    ld      (bACTIVE_AREA),a
+    call    _vdpEnableLineInterruptNI ; disable them (routine in vdp.s)
+    jp      leave_isr
 
-; set_line_interrupt_x:
-;     ld      a,#1
-;     ld      (_g_bACTIVE_AREA),a
-;     ld      a,#SECOND_LINE_INT      ; prepare reg
+set_line_interrupt_x:
+    ld      a,#1
+    ld      (bACTIVE_AREA),a
+    ld      a,#SECOND_LINE_INT      ; prepare reg
 
-; set_line_interrupt: ; A: line
-;     ld      (hl),a
-;     vdpWriteReg 19                  ; sets value
+set_line_interrupt: ; A: line
+    ld      (hl),a
+    vdpWriteReg 19                  ; sets value
 
-;     ld      a, #1
-;     call    _vdpEnableLineInterruptNI ; enable them (routine in vdp.s)
+    ld      a, #1
+    call    _vdpEnableLineInterruptNI ; enable them (routine in vdp.s)
 
-;     ; fall through
+    ; fall through
 
-; leave_isr:
-; 	ld		a, #2                   ; leave with S#2 set
-;     vdpWriteReg 15
+leave_isr:
+	ld		a, #2                   ; leave with S#2 set
+    vdpWriteReg 15
 
-;     pop     hl
-;     pop		af
-;     ei
-;     ret
+    pop     hl
+    pop		af
+    ei
+    ret
 
 ; ----------------------------------------------------------------------------
 ; GetTime... with workaround for buggy behavior in BIOS. For some reason,
@@ -627,158 +627,54 @@ testVDP:
     pop     bc
     ret
 
-; ; -------------------------------------------------------------
-; ; Assumes there is alreay a JP XXXX at 0x0038 (it is always in DOS)
-; ; stores the current address, and sets the new one
-; ; MODIFIES: HL
-; setCustomISRNI:
-;     ld  hl,(0x0039)
-;     ld  (_g_pInterruptOrg),hl
-;     ld  hl,#_customISR
-;     ld  (0x0039),hl
+; -------------------------------------------------------------
+; Assumes there is alreay a JP XXXX at 0x0038 (it is always in DOS)
+; stores the current address, and sets the new one
+; MODIFIES: HL
+setCustomISRAndPrepNI:
 
-;     ret
+    ld      a,#SECOND_LINE_INT
+    ld      (uCurrentInterruptLine),a    ; start value needs to non-zero
 
-; ; -------------------------------------------------------------
-; ; Also restores S#0 as current status reg.
-; ; MODIFIES: HL
-; restoreISRAndSetS0NoLineInt_NI:
-;     ld  hl,(_g_pInterruptOrg)
-;     ld  (0x0039),hl
+    xor     a
+    ld      (bACTIVE_AREA),a
 
-;     xor     a
-;     ld      (_g_bACTIVE_AREA),a
-;     call    _vdpEnableLineInterruptNI ; disable them (routine in vdp.s)
+    ld      hl,(0x0039)
+    ld      (pInterruptOrg),hl
+    ld      hl,#_customISR
+    ld      (0x0039),hl
 
-;     ld      a, #0
-;     vdpWriteReg 15              ; set status reg #0
-;     ret
-
-; ; -------------------------------------------------------------
-; ; 
-; ; MODIFIES: A
-; sync_with_active_area::
-;     halt
-;     ld      a,(_g_bACTIVE_AREA)
-;     or      a
-;     jp      z,sync_with_active_area
-;     ret
+    ret
 
 ; -------------------------------------------------------------
-; Called in EI
-; If value proves to work. we will try one value below, at least
-; <x> amount of times. Stop when <x> attempts all fail (busy).
-; IN:
-;
-; IN:       HL - pointer to struct
-;
-;           typedef struct {
-;               u8                      uW;                               0
-;               u8                      uH;                               1
-;               u8                      uCmd;                             2
-;               u8                      uInnerIterations;                 3
-;               u16                     nStartDelay;                      4 & 5
-;               u8                      uOuterIterations;                 6
-;               u16*                    pHistogramWinner;                 7 & 8
-;           } RunCombo;
-;
-; OUT:      DE - best delay found
-;           RunCombo.nStartDelay: best delay found
-;           RunCombo.anHistogramLastIndex: updated
-; MODIFIES:
-; u16 runTestCombo(RunCombo* p, u16* anHistogramLastIndex); HL
-_runTestCombo::
-    ; in a,(0x2e)
+; Also restores S#0 as current status reg.
+; MODIFIES: HL
+restoreISRAndSetS0NoLineInt_NI:
+    ld      hl,(pInterruptOrg)
+    ld      (0x0039),hl
 
-;     push    ix
+    xor     a
+    ld      (bACTIVE_AREA),a
+    call    _vdpEnableLineInterruptNI ; disable them (routine in vdp.s)
 
-;     ex      de,hl
-;     ld      ixl,e 
-;     ld      ixh,d               ; put pointer to struct in IX
+	ld		a, #1               ; ensure there are no pending line inter (read flag)
+    vdpWriteReg 15
+    in      a,(VDPPORT1)        ; read VDP S#n to reset VBLANK IRQ (F flag is set on VBLANK int)
 
-;     ld      b,6(ix)             ; outer iterations
-;     ld      c,#0
+	xor     a                   ; ensure there are no interrupts (read flag)
+    vdpWriteReg 15
+    in      a,(VDPPORT1)        ; read VDP S#n to reset VBLANK IRQ (F flag is set on VBLANK int)
 
-;     ; initialize interrupt
-;     halt
-;     di
-;     call    setCustomISRNI      ; DI barely needed this fast after halt, but just as good practise
-;     ei
+    ret
 
-; encore_une_fois::
-;     push    bc                  ; B(outer): Outer iterations.
-;     ld      b,3(ix)             ; inner iterations
-;     ld      c,2(ix)             ; C: command
-;     ld      l,4(ix)
-;     ld      h,5(ix)             ; HL: Current Greenlit delay
-;     ld      e,l
-;     ld      d,h                 ; DE: Current Attempting delay
-;     ld      iyl,#0              ; wait-index
-;     call    runTestComboInner
-;     pop     bc 
-;     djnz    encore_une_fois
-
-;     ex      de,hl               ; SDCC needs return in DE
-
-;     di
-;     call    restoreISRAndSetS0NoLineInt_NI ; turn off. Next int is normal VBLANK. no line ints are on.
-;     ei
-
-;     pop     ix
-;     ret
-
-; runTestComboInner::             ; IX: Pointer to params. returns in HL, the best delay found.
-
-;     call    sync_with_active_area
-
-;     push    hl
-;     ld      a,iyl
-;     call    doControlledWait    ; A is input. constant wait in cycles + A value.
-;     pop     hl
-
-; loopr::
-;     di
-;     call    setVDPParams        ; this one will add several extra cycles on Toshiba models
-;     call    testVDP             ; C = Cmd, DE = delay. Result in A
-;     ei
-;     rr      a                   ; CE bit goes into C, but if all we are ZERO here, something is wrong
-;     jr      z,bail              ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
-;     jp      nc,job_was_done
-
-; job_was_not_done::              ; if not done, we must try until all attempts are done 
-
-;     ld      a,(_g_bACTIVE_AREA) ; ensure we are still in active area and have time for a new attempt.
-;     or      a
-;     call    z,sync_with_active_area ; if not, we wait until we are in active area again
-
-;     ; ld      (0xAAAA),bc         
-
-;     djnz    loopr               ; just try again with same values
-
-;     ld      a,#12               
-;     cp      iyl                 ; ensure we jump over the gap
-;     jp      z,bail              ; if we get here, we are out of ixl controlled attempts.
-
-;     ld      b,3(ix)             ; reset inner iterations 
-;     inc     iyl                 ; same run, but +1 cycle wait
-;     jp      runTestComboInner   ; if next possible delay == 0, we bail
-
-; job_was_done::
-;     ld      b,3(ix)             ; success, so restart testing but try one lower DE value
-;     ld      iyl,#0              ; starts with a resetted wait index
-;     ld      h,d
-;     ld      l,e                 
-;     call    getNextPossibleDelay
-;     ld      a,d
-;     or      e
-;     jp      nz,loopr            ; it will be much faster to go to this each time is it done. timely reset can be done when job was not done
-;     ; jp      nz,runTestComboInner; if next possible delay == 0, we bail
-;     ; FALL THROUGH
-
-; bail::
-;     ld      4(ix),l             ; updating this struct value in case we do new runs
-;     ld      5(ix),h             ; 
-
+; -------------------------------------------------------------
+; 
+; MODIFIES: A
+sync_with_active_area::
+    halt
+    ld      a,(bACTIVE_AREA)
+    or      a
+    jp      z,sync_with_active_area
     ret
 
 ; -------------------------------------------------------------
@@ -927,9 +823,9 @@ local_knob:
 ;           } RunCombo;
 ;
 ; OUT:      DE - best delay found
-;           anHistogramLastIndex: updated
+;           data updated in parameters
 ; MODIFIES: AF, BC, DE, HL, IY, HL', DE'
-; u16 runTestCombo(RunCombo* p, u16* anHistogramLastIndex); HL, DE
+; u16 runTestComboNoHalts(RunCombo* p, u16* anHistogramLastIndex); HL, DE
 _runTestComboNoHalts::
     ; in a,(0x2e)
     push    ix
@@ -1028,7 +924,6 @@ x_job_was_done::
     ld      a,d
     or      e
     jp      nz,x_runTestComboInner  ; if next possible delay == 0, we bail
-    ; jp      nz,x_loopr              ; goes out of display area... it will be much faster to go to this each time is it done. timely reset can be done when job was not done
     ret                             ; we actually hit 12 (which only happens in emulators)
 
 ; -------------------------------------------------------------
@@ -1111,10 +1006,154 @@ goodbye:
 
     ret
 
+; -------------------------------------------------------------
+; Called in EI. Similar to runTestComboNoHalts., but with Halts.
+; Assumes anHistogram is already initialized to 0. 
+;
+; IN:       HL - pointer to struct
+;
+;           typedef struct {
+;               u8                      uW;                               0
+;               u8                      uH;                               1
+;               u8                      uCmd;                             2
+;               u8                      uInnerIterations;                 3
+;               u16                     nStartDelay;                      4 & 5
+;               u8                      uOuterIterations;                 6
+;               u16*                    pHistogramWinner;                 7 & 8
+;           } RunCombo;
+;
+; OUT:      DE - best delay found
+;           data updated in parameters
+; MODIFIES: AF, BC, DE, HL, IY, HL', DE'
+; u16 runTestCombo(RunCombo* p, u16* anHistogramLastIndex); HL, DE
+
+_runTestCombo::
+    ; in a,(0x2e)
+    push    ix
+
+    push    de
+    exx
+    pop     hl
+    exx                             ; HL' holds pointer to u16 anHistogram[HISTOGRAM_BUFFER-1], we'll populate the 16bit array backwards
+
+    ex      de,hl
+    ld      ixl,e 
+    ld      ixh,d                   ; put pointer to struct in IX
+
+    halt
+    di
+    call    setCustomISRAndPrepNI   ; DI barely needed this fast after halt, but just as good practise
+    ei
+
+    ld      b,6(ix)                 ; outer iterations
+    ld      c,2(ix)                 ; C: command
+
+    ld      l,4(ix)
+    ld      h,5(ix)                 ; HL: Current Greenlit delay
+    ld      e,l
+    ld      d,h                     ; DE: Current Attempting delay
+
+encore_une_fois::
+    push    bc                      ; store for outer loop
+    ld      b,3(ix)                 ; inner iterations
+    ld      iyl,#0                  ; wait-index
+
+    call    runTestComboInner
+
+    pop     bc                      ; restore for outer looping
+    djnz    encore_une_fois
+
+    ; exx
+    ; in      a,(0x2e)                ; just for debugging: stop to see histogram in mem
+    ; exx
+
+    ex      de,hl                   ; SDCC needs return in DE
+
+    di
+    call    restoreISRAndSetS0NoLineInt_NI
+    ei
+
+    pop     ix
+    ret
+
+runTestComboInner::                 ; IX: Pointer to params. returns in HL, the best delay found.
+
+    call    sync_with_active_area
+
+.ifeq METHOD_WAIT - 1               ; counter
+    push    hl
+    ld      a,iyl
+    call    doControlledWait        ; A is input. constant wait in cycles + A value.
+    pop     hl
+.else
+.ifeq METHOD_WAIT - 2               ; random
+    push    hl
+    ld      a,r
+    and     #0x0f
+    call    doControlledWait        ; A is input. constant wait in cycles + A value.
+    pop     hl
+.else
+                                    ; No wait
+.endif
+.endif
+
+loopr::
+    updateHistogram                 ; x cycles. put in a macro to make it more readable.
+    di
+    call    setVDPParams            ; this one will add several extra cycles on Toshiba models
+    call    testVDP                 ; C = Cmd, DE = delay. Result in A
+    ei
+    rr      a                       ; CE bit goes into C, but if all we are ZERO here, something is wrong
+    ret     z                       ; if the full value is 0 (impossible status reg), we have tried an impossible wait value
+    jp      nc,job_was_done
+
+job_was_not_done::                  ; if not done, we must try until all attempts are done 
+
+    ; call    secureActiveArea
+    ld      a,(bACTIVE_AREA)     ; ensure we are still in active area and have time for a new attempt.
+    or      a
+    call    z,sync_with_active_area ; if not, we wait until we are in active area again
+
+    djnz    loopr                   ; just try again with same values
+
+    ld      a,#12
+    cp      iyl                     ; ensure we jump over the gap
+    ret     z                       ; if we get here, we are out of iyl controlled attempts.
+
+    ld      b,3(ix)                 ; reset inner iterations 
+    inc     iyl                     ; same run, but different value in doControlledWait
+    jp      runTestComboInner 
+
+job_was_done::
+    ld      a,(bACTIVE_AREA)     ; ensure we are still in active area and have time for a new attempt.
+    or      a
+    call    z,sync_with_active_area ; if not, we wait until we are in active area again
+
+    histogram_advance_and_record
+    ld      b,3(ix)                 ; success, so restart testing but try one lower DE value
+    ld      iyl,#0                  ; starts with a resetted wait index (0), works with x_runTestComboInner, gives (1) if we loop to x_loopr below (ok, then).
+    ld      h,d
+    ld      l,e                 
+    call    getNextPossibleDelay
+
+    ld      a,d
+    or      e
+    jp      nz,loopr                ; if next possible delay == 0, we bail
+    ret                             ; we actually hit 12 (which only happens in emulators)
 
 ; ----------------------------------------------------------------------------
     .area _DATA
 
-uIYH::
+uIYH:
     .db 0                       ; store across C-functions (to make multiple algorithms use the same code)
+
+pInterruptOrg:
+    .dw #0
+
+uCurrentInterruptLine:
+    .db 0
+
+bACTIVE_AREA:
+    .db 0                       ;         raster currently in VBLANK (false) or not (true)
+
 

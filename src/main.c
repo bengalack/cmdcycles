@@ -34,7 +34,7 @@
 
 // Defines shared with ASM files ---------------------------------------------
 //
-#define METHOD_WAIT         2           //; 0: No wait, 1: Counter, 2: Random (R-reg)
+#define METHOD_WAIT         1           //; 0: No wait, 1: Counter, 2: Random (R-reg)
 #define VDPCMD_LINE		    0b01110000  // LINE
 
 // Typedefs & defines --------------------------------------------------------
@@ -66,7 +66,6 @@
 #define LOGICAL_OP_TEOR     0b1011 // if SC=0 then DC=DC else DC=SCxDC+SCxDC
 #define LOGICAL_OP_TNOT     0b1100 // if SC=0 then DC=DC else DC=SC
 
-// #define NUM_TESTS           1
 #define NUM_TESTS           6
 #define NUM_HORIZONTALS     8
 #define NUM_VERTICALS       8
@@ -74,12 +73,11 @@
 #define INITIAL_LOOP_CYCLES 33      // max size: 63 (!)
 #define SCRATCH_HIST_SIZE   1024
 #define MY_HEAP_SIZE        28000   // size in bytes
-#define BUFFER_SIZE         512     // size of g_auBuffer, in bytes (help text is the greatest consumer of this buffer)
+#define BUFFER_SIZE         1024    // size of g_auBuffer, in bytes (help text is the greatest consumer of this buffer)
 #define HIST_STR_BUF_SIZE   1024    // size of g_auHistStrBuf, in bytes
 #define LEEWAY              150     // add a buffer to the initial delay to avoid having the real test MISS hitting the initial measurement (happens on turboR in emulator)
-#define METHOD_SYNC         1       // 0: ISR, 1: LINE INTS
 
-#define DEFAULT_INNER_LOOPS 64  // 0 = 256
+#define DEFAULT_INNER_LOOPS 64      // 0 = 256
 #define DEFAULT_OUTER_LOOPS 3
 
 #define SCREEN_MODE         8 // 5? 8?
@@ -176,7 +174,7 @@ extern u16      measureVDPCommandsInOneFrame(void);
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]           = "0.80";
+const u8                g_szVersion[]           = "0.81";
 const u8                g_szErrorMSX[]          = "MSX2 or higher is required";
 
 const u8                g_szTopLine1[]          = "cmdcycle v%s - %04hu-%02d-%02d %02d:%02d:%02d - %s  \r\n"; // markdown needs two spaces at end of line to force line break
@@ -206,11 +204,8 @@ const u8* const         g_aszConditionNames[] = {
                                                     "No display"
                                                 };
 
-#if METHOD_SYNC==1
-const u8                g_szSyncMethod[]         = "Line interrupts";
-#else
-const u8                g_szSyncMethod[]         = "VBLANK interrupt";
-#endif
+const u8                g_szSyncMethod0[]         = "Line interrupts";
+const u8                g_szSyncMethod1[]         = "VBLANK interrupt";
 
 #if METHOD_WAIT==1
 const u8                g_szWaitMethod[]         = "Incremental";
@@ -227,10 +222,9 @@ const u8                g_szHelptext[]          = "Usage: cmdcycle [opt][sys]\r\
                                                   "command in MSX Z80 cycles\r\n"
                                                   "(outside VBLANK area).\r\n"
                                                   "Format is markdown, written\r\n"
-                                                  "to stdout unless redirected.\r\n"
+                                                  "to stdout(redirect possible)\r\n"
                                                   "\r\n"
                                                   "Version: %s\r\n"
-                                                  "Sync: %s\r\n"
                                                   "Wait: %s\r\n"
                                                   "\r\n"
                                                   "Options (opt):\r\n"
@@ -241,6 +235,7 @@ const u8                g_szHelptext[]          = "Usage: cmdcycle [opt][sys]\r\
                                                   " -1 Mode: normal (default)\r\n"
                                                   " -2 Mode: no sprites\r\n"
                                                   " -3 Mode: no screen\r\n"
+                                                  " -t VBLANK timing\r\n"
                                                   "\r\n"
                                                   "sys: Show sys name in report";
 
@@ -298,7 +293,6 @@ const u8 const          aEXECUTE_CMD[NUM_TESTS] = \
                             VDPCMD_HMMV,
                             VDPCMD_LMMV | LOGICAL_OP_TOR,   // just random logical op  (which does not become 0)
                             VDPCMD_LINE | LOGICAL_OP_EOR    // just random logical op
-                            // VDPCMD_LINE     // just random logical op
                         };
 
 const u8 const          aHORZ_LEN[NUM_HORIZONTALS] = 
@@ -329,16 +323,13 @@ const u8 const          aVERT_LEN[NUM_VERTICALS] =
 //
 u8                      g_auBuffer[ BUFFER_SIZE ];          // temp/general buffer here to avoid stack explosion
 u8                      g_auHistStrBuf[ HIST_STR_BUF_SIZE ];// temp/general buffer here to avoid stack explosion
-void* __at(0x0039)      g_pInterrupt;           // We assume that 0x0038 already holds 0xC3 (JP) in dos mode at startup
-void*                   g_pInterruptOrg;
-u8                      g_uCurrentInterruptLine;
-bool                    g_bACTIVE_AREA;         // raster currently in VBLANK (false) or not (true)
 
 u8                      g_uVDPModel;
 u8                      g_uInnerIterations;
 u8                      g_uOuterIterations;
 bool                    g_bHasT976xEngine;
 u8                      g_uCondition;
+bool                    g_bVBLANKTiming;
 
 u16*                    g_pHeapHead;            // for MY_HEAP, jalla-malloc
 
@@ -368,11 +359,9 @@ void initVarsAndRig(void)
 
     g_uVDPModel = getVDPModel();
 
-    g_uInnerIterations = DEFAULT_INNER_LOOPS;
-    g_uOuterIterations = DEFAULT_OUTER_LOOPS;
-
-    g_uCurrentInterruptLine = 190; // start value needs to non-zero
-    g_bACTIVE_AREA = false;
+    g_uInnerIterations  = DEFAULT_INNER_LOOPS;
+    g_uOuterIterations  = DEFAULT_OUTER_LOOPS;
+    g_bVBLANKTiming     = false;
 
     g_uCondition = ACTIVE_DISPLAY; // default
 
@@ -530,11 +519,13 @@ bool runTest(void)
                 oParams.nStartDelay = nStartDelay; // note this value will be changed by the function
                 oParams.pHistogramWinner = (u16*)0x0000;
 
-#if METHOD_SYNC==1
-                u16 nBestDelay = runTestComboNoHalts(&oParams, panHistogramLastIndex) + nAdd;
-#else
-                u16 nBestDelay = runTestCombo(&oParams, panHistogramLastIndex) + nAdd;
-#endif
+                u16 nBestDelay;
+                if(g_bVBLANKTiming)
+                    nBestDelay = runTestCombo(&oParams, panHistogramLastIndex);
+                else
+                    nBestDelay = runTestComboNoHalts(&oParams, panHistogramLastIndex);
+
+                nBestDelay += nAdd;
 
                 g_anResultDelays[c][u][v] = nBestDelay;
 
@@ -613,7 +604,7 @@ void printReport(DateTime* pDateTime)
 
     sprintf(g_auBuffer,
             g_szTopLine2x,
-            g_szSyncMethod,
+            g_bVBLANKTiming?g_szSyncMethod1:g_szSyncMethod0,
             g_szWaitMethod
            );
 
@@ -805,7 +796,7 @@ void printReport(DateTime* pDateTime)
 // ---------------------------------------------------------------------------
 void printHelp(void)
 {
-    sprintf(g_auBuffer, g_szHelptext, g_szVersion, g_szSyncMethod, g_szWaitMethod, DEFAULT_OUTER_LOOPS, DEFAULT_INNER_LOOPS==0 ? 256 : DEFAULT_INNER_LOOPS);
+    sprintf(g_auBuffer, g_szHelptext, g_szVersion, g_szWaitMethod, (u8)DEFAULT_OUTER_LOOPS, (u16)(DEFAULT_INNER_LOOPS==0 ? 256 : DEFAULT_INNER_LOOPS));
     print(g_auBuffer);
 }
 
@@ -848,6 +839,11 @@ u8 commandLineParameters(char** argv, u8 argc)
             {
                 g_uCondition = 2;
             }
+            else if(strcmp(argv[n], "-t") == 0)
+            {
+                g_bVBLANKTiming = true;
+            }
+            
             else if(strcmp(argv[n], "-i") == 0)
             {
                 if(++n >= argc)
