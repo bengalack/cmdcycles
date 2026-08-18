@@ -213,6 +213,7 @@ setup_done2:
 ; and YMMM does not use 40-41.
 ; Does everything at (256-w,256-h) in page 0 => same place in page 1
 ; We pass the planned command, but we do NOT execute it.
+; A line has thickness 0, so we need to decrease both horz and vert extent by 1.
 ; This routine has 16 outs (12 for lines), ie. +16 (12 for lines) outs on some VDPs
 ; MODIFIES: AF, BC, DE, HL
 ; void setVDPCmdParamsNI(u8 w, u8 h); A, L 
@@ -247,7 +248,7 @@ setVDPCmdParamsNI_asm:: ; call from asm using D: width, E: height, A = CMD (just
     cp      #VDPCMD_LINE
     jp      nz,not_a_line_command
 
-line_command:
+line_command::
     ld      b,#1
     ld      a,d
     cp      e                   ; if width < height, swap NXL (long) and NYL (short)
@@ -260,6 +261,8 @@ swap:
     ; FALL THROUGH
 
 no_swap:
+    dec     d
+    dec     e
     dec     b                   ; b=0, for all except vertical inclined lines
 	ld    	a,#36				; Set "Stream mode" from reg 36
     vdpWriteReg 17

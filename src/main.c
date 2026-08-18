@@ -74,12 +74,11 @@
 #define INITIAL_LOOP_CYCLES 33      // max size: 63 (!)
 #define SCRATCH_HIST_SIZE   1024
 #define MY_HEAP_SIZE        28000   // size in bytes
-#define BUFFER_SIZE         1024    // size of g_auBuffer, in bytes
+#define BUFFER_SIZE         512     // size of g_auBuffer, in bytes (help text is the greatest consumer of this buffer)
 #define HIST_STR_BUF_SIZE   1024    // size of g_auHistStrBuf, in bytes
 #define LEEWAY              150     // add a buffer to the initial delay to avoid having the real test MISS hitting the initial measurement (happens on turboR in emulator)
 #define METHOD_SYNC         1       // 0: ISR, 1: LINE INTS
 
-// #define DEFAULT_INNER_LOOPS 32  // this one is tested 16 times (16 x 16 = 256)
 #define DEFAULT_INNER_LOOPS 64  // 0 = 256
 #define DEFAULT_OUTER_LOOPS 3
 
@@ -177,7 +176,7 @@ extern u16      measureVDPCommandsInOneFrame(void);
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]           = "0.79";
+const u8                g_szVersion[]           = "0.80";
 const u8                g_szErrorMSX[]          = "MSX2 or higher is required";
 
 const u8                g_szTopLine1[]          = "cmdcycle v%s - %04hu-%02d-%02d %02d:%02d:%02d - %s  \r\n"; // markdown needs two spaces at end of line to force line break
@@ -299,6 +298,7 @@ const u8 const          aEXECUTE_CMD[NUM_TESTS] = \
                             VDPCMD_HMMV,
                             VDPCMD_LMMV | LOGICAL_OP_TOR,   // just random logical op  (which does not become 0)
                             VDPCMD_LINE | LOGICAL_OP_EOR    // just random logical op
+                            // VDPCMD_LINE     // just random logical op
                         };
 
 const u8 const          aHORZ_LEN[NUM_HORIZONTALS] = 
@@ -342,13 +342,7 @@ u8                      g_uCondition;
 
 u16*                    g_pHeapHead;            // for MY_HEAP, jalla-malloc
 
-u8                      DBUG_N;
-u8                      DBUG_X;
-u8                      DBUG_Y;
 u8                      ERROR_CODE;
-
-u8                      DBUG_LEN1;
-u8                      DBUG_LEN2;
 
 u8                      g_auSysStr[MAX_SYS_LEN];// name of system
 
@@ -377,11 +371,10 @@ void initVarsAndRig(void)
     g_uInnerIterations = DEFAULT_INNER_LOOPS;
     g_uOuterIterations = DEFAULT_OUTER_LOOPS;
 
-    g_uCurrentInterruptLine = 200; // start value needs to non-zero
+    g_uCurrentInterruptLine = 190; // start value needs to non-zero
     g_bACTIVE_AREA = false;
 
     g_uCondition = ACTIVE_DISPLAY; // default
-    // g_uCondition = NO_DISPLAY;
 
     g_pHeapHead = (u16*)MY_HEAP;
 
@@ -404,14 +397,15 @@ void establishInitialDelays(void)
     prepareLineInterruptsNI(); // sets status reg 2
     for(u8 c = 0; c < NUM_TESTS; c++)
     {
-        for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+        u8 cCMD = aEXECUTE_CMD[c];
+        for(u8 v = 0; v < NUM_VERTICALS; v++)
         {
             COMBO2BYTES oWH;
-            oWH.w = aHORZ_LEN[u];
-            for(u8 v = 0; v < NUM_VERTICALS; v++)
+            oWH.h = aVERT_LEN[v];
+
+            for(u8 u = 0; u < NUM_HORIZONTALS; u++)
             {
-                oWH.h = aVERT_LEN[v];
-                u8 cCMD = aEXECUTE_CMD[c];
+                oWH.w = aHORZ_LEN[u];
 
                 setVDPCmdParamsNI(cCMD, oWH.wh); // packing params to avoid using stack for parameters
                 g_anResultDelays[c][u][v] = (u16)(getInitialDelayNI(cCMD) * nMultiplier) + (u16)LEEWAY; // obeys active area restriction using line interrupts.
@@ -506,7 +500,6 @@ bool recordAndClearHistogram(RunCombo* pParams, u16* panHistogramLastIndex, u16 
 bool runTest(void)
 {
     RunCombo oParams;
-    RunCombo* pParams = &oParams;
 
     oParams.uInnerIterations = g_uInnerIterations;
     oParams.uOuterIterations = g_uOuterIterations;
@@ -522,22 +515,20 @@ bool runTest(void)
 
     for(u8 c = 0; c < NUM_TESTS; c++)
     {
-DBUG_N = c;
         oParams.uCmd = aEXECUTE_CMD[c];
 
-        for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+        for(u8 v = 0; v < NUM_VERTICALS; v++)
         {
-DBUG_X = u;
-            oParams.uW = aHORZ_LEN[u];
+            oParams.uH = aVERT_LEN[v];
 
-            for(u8 v = 0; v < NUM_VERTICALS; v++)
+            for(u8 u = 0; u < NUM_HORIZONTALS; u++)
             {
-DBUG_Y = v;
+                oParams.uW = aHORZ_LEN[u];
+
                 u16 nStartDelay = g_anResultDelays[c][u][v];
 
-                pParams->uH = aVERT_LEN[v];
-                pParams->nStartDelay = nStartDelay; // note this value will be changed by the function
-                pParams->pHistogramWinner = (u16*)0x0000;
+                oParams.nStartDelay = nStartDelay; // note this value will be changed by the function
+                oParams.pHistogramWinner = (u16*)0x0000;
 
 #if METHOD_SYNC==1
                 u16 nBestDelay = runTestComboNoHalts(&oParams, panHistogramLastIndex) + nAdd;
@@ -547,7 +538,7 @@ DBUG_Y = v;
 
                 g_anResultDelays[c][u][v] = nBestDelay;
 
-                if(!recordAndClearHistogram(pParams, panHistogramLastIndex, nBestDelay, &g_aoHistogram[c][u][v]))
+                if(!recordAndClearHistogram(&oParams, panHistogramLastIndex, nBestDelay, &g_aoHistogram[c][u][v]))
                     return false;
             }
         }
@@ -639,6 +630,7 @@ void printReport(DateTime* pDateTime)
     print(g_szEmptyLine);
 
     // Table top second -----------------------
+    // Minimum cycle counts
 
     u32 ulTotal = 0;
 
@@ -702,6 +694,7 @@ void printReport(DateTime* pDateTime)
 
 
     // Next table -----------------------
+    // Histogram
 
     ulTotal = 0;
 

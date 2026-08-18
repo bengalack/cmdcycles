@@ -39,7 +39,7 @@
     GETCPU              .equ 0x0183
     CHGET               .equ 0x009F
 
-    SECOND_LINE_INT     .equ 190                ; at line 200 (gives ~21 lines, testing shows it is needed)
+    SECOND_LINE_INT     .equ 190                ; We are in 212 lines mode
 
     INITIAL_LOOP_CYCLES .equ 33                 ; must b identical to the one in main.c     
 
@@ -1089,7 +1089,7 @@ in_vblank:
     rra
     jp      nc,in_vblank        ; 11 cycles. total: 28. Loop until we are in active area (FH: bit 0)
 
-    ld      a,#SECOND_LINE_INT  ; toggle 0 and / 200
+    ld      a,#SECOND_LINE_INT  ; toggle 0 and / 190
     ld      iyh,a
     vdpWriteReg 19              ; sets the line for the next interrupt
     jp      goodbye
@@ -1100,7 +1100,7 @@ _in_active_area:
     rra
     jr      nc,goodbye
 
-    xor     a                   ; toggle 0 and / 200
+    xor     a                   ; toggle 0 and / 190
     ld      iyh,a
     vdpWriteReg 19              ; sets the line for the next interrupt
     ; FALL THROUGH
