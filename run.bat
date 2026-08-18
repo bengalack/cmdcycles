@@ -21,5 +21,5 @@ set MACHINE=Panasonic_FS-A1GT
 @echo cmdcycle %MACHINE% ^> %SHORTNAME%.md > dska\cc.bat
 @REM @echo cmdcycle %MACHINE% > dska\cc.bat
 
-C:\tools\openmsx21x\openmsx.exe -machine %MACHINE% -ext msxdos2 -ext ram1mb -diska dska/ -command "debug set_watchpoint read_io 0x2E" -command "set throttle off" -command "after time 10 {set throttle on}"
-@REM C:\tools\openmsx21x\openmsx.exe -machine %MACHINE% -ext msxdos2 -ext ram1mb -diska dska/ -command "debug set_watchpoint read_io 0x2E" -command "set throttle off"
+@REM C:\tools\openmsx21x\openmsx.exe -machine %MACHINE% -ext msxdos2 -ext ram1mb -diska dska/ -command "debug set_watchpoint read_io 0x2E" -command "set throttle off" -command "after time 10 {set throttle on}"
+C:\tools\openmsx21x\openmsx.exe -machine %MACHINE% -ext msxdos2 -ext ram1mb -diska dska/ -command "debug set_watchpoint read_io 0x2E" -command "set throttle off"
