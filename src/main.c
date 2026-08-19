@@ -140,7 +140,6 @@ extern bool     hasTurboFeature(void) __preserves_regs(d,e,h,l,iyl,iyh);
 
 extern u8       changeMode(u8 uModeNum); 
 extern void     setLineWidth(u8 uWidth);
-// extern void     customISR(void);
 extern void     print(u8* szMessage);
 // extern u8       waitForKey(void);
 extern bool     userOutputsToScreen(void);
@@ -155,7 +154,6 @@ extern u8       getInitialDelayNI(u8 uVDP_CMD);
 
 // from vdp.s
 extern void     setVDPCmdParamsNI(u8 uCmd, u16 oHW); // oWH: COMBO2BYTES (u16)
-// extern void     executeCmdWithPreppedParamsNI(u8 uCmd);
 extern bool     getPALRefreshRate(void);
 extern void     setPALRefreshRate(bool bEnabled);
 extern void     vdpSpritesEnabled(bool bEnabled);

@@ -319,14 +319,6 @@ line_goes_from_here:
 
 	ret
 
-
-; ; -----------------------------------------------------------------------------
-; ; 
-; ; void _executeCmdWithPreppedParams(u8 uCmd); // A
-; _executeCmdWithPreppedParamsNI::
-; 	out   	(VDPSTREAM),a
-;     ret
-
 ;-------------------------
 ; Modifies: AF,B
 ; u8 getVDPModel(void);
