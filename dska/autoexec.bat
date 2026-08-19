@@ -1,1 +1,1 @@
-cc.bat
+rem cc.bat

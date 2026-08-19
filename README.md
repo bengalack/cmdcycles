@@ -2,40 +2,26 @@
 
 ## What it does
 
-ignoring PAL/NTSC, 192/212, VBLANK/DISPLAY.
+This tool is making a bunch of VDP commands and tries to measure the time the operation takes. From [earlier research](https://openmsx.org/vdp-vram-timing/vdp-timing.html) we know that screen off/on, sprites on/off affects the timings, so we measure separately under these conditions. Measurement is done in the active area only. We also know that some VDPs (systems) [add extra cycles](https://www.msx.org/forum/msx-talk/development/extra-vdp-wait-cycles?page=0) on VDP I/O, so that is catered for as well.
 
+You want to redirect the output to a file, the size will be between 25kB-40kB.
 
-https://openmsx.org/vdp-vram-timing/vdp-timing.html 
+_I should probably explain more about how this tool works! It's coming._
 
-https://www.msx.org/forum/msx-talk/development/extra-vdp-wait-cycles?page=0
+__Note: This is a slow tool. One run (only) will give you this output on an NTSC:__
 
-https://gist.github.com/grauw/184cf27ed002f4d9d3ea1bb43c9bf1f6 
-
-
-We can measure 12, 14 and 17 cycle delays, but measuring less than 15 is only possible with screen off, according to data from this research: https://aoineko.org/msxgl/index.php?title=VRAM_access_timing
-
-G7, YAE, YJK seems to have struggles with cycles < 17 (ie. the 15 limit above applies here too) when LMMC is used (screen off). This may affect us.
-G7 is screen 8.
-
-
-| LMMM-TEOR          | 1    | 2    | 3    | 4    | 5    | 6    | 7    | 8    |
-|--------------------|------|------|------|------|------|------|------|------|
-| 1                  | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 |  
-| 2                  | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 |  
-| 3                  | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 |  
-| 4                  | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 |  
-| 5                  | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 |  
-| 6                  | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 |  
-| 7                  | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 |  
-| 8                  | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 | 1348 |
+```
+Duration test:  14 minutes 31 seconds  
+Duration print: 4 minutes 15 seconds  
+```
 
 ## Help text
 
-![screenshot](img/help_v2.png)
+![screenshot](img/help.png)
 
 ## Understanding the results
 
-## Detail section
+We should certainly explain here.
 
 ## Requirements
 
@@ -45,7 +31,6 @@ G7 is screen 8.
 ## Attributions
 
 * This code includes code snippet by Grauw (see vdpwait.s)
-
 
 ## License
 
