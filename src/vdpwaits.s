@@ -4,8 +4,11 @@
 ; Original file by Grauw here: https://gist.github.com/grauw/184cf27ed002f4d9d3ea1bb43c9bf1f6
 ; Discussed here: https://www.msx.org/forum/msx-talk/development/extra-vdp-wait-cycles
 ; This file is modified to compile with SDCC and to work in the background with no screen output.
+; Also added one HALT at the start. Testing has proven that, if VDP REG 9 is written to (even if
+; the value is the same) right before this test commence, this test returns inaccurate results.
+; Maybe other registers provoke the same behavior(?). A halt remedies this issue. 
 ;
-; Expected results:
+; Expected results in (192 lines mode only):
 ; 0 waits: 0x7C4 (60Hz) / 0x948 (50Hz) [Just test for this one, if >= to these, we or ok, otherwise we have a +1]
 ;
 ; Used with permission
@@ -15,6 +18,7 @@
 ; extern u16 measureVDPCommandsInOneFrame(void);
 _measureVDPCommandsInOneFrame::
 
+	halt
 	di
 	ld 		a,(0x0038)
 	ld 		hl,(0x0039)

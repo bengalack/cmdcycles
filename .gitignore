@@ -18,6 +18,7 @@ _msxdos.sys
 _msxdos2.sys
 dska/*.txt
 dska/*.md
+dska/*Hz.COM
 
 temp/**
 

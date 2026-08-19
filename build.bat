@@ -9,4 +9,4 @@ sdasz80 -o -s -p -g -w out\vdpwaits.rel src\vdpwaits.s
 @REM sdcc --code-loc 0x010E --data-loc 0 -mz80 --no-std-crt0 --opt-code-speed out\dos_crt.rel out\vdp.rel src\main.c -o out\%NAME%.ihx
 sdcc --code-loc 0x0180 --data-loc 0 -mz80 --no-std-crt0 --opt-code-speed  out\dos_crt.rel out\vdp.rel out\bioshelper.rel out\cycle-test.z80.rel out\vdpwaits.rel src\main.c -o out\%NAME%.ihx
 
-makebin -p -o 0x100 out\%NAME%.ihx dska\%NAME%.com
+makebin -s 65535 -p -o 0x100 out\%NAME%.ihx dska\%NAME%.com
