@@ -194,7 +194,7 @@ const u8                g_szTotalLine[]         = "Grand total: %lu  \r\n";
 const u8                g_szDurationTest[]      = "Duration test:  %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
 const u8                g_szDurationPrint[]     = "Duration print: %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
 
-const u8                g_szTitle2[]            = "## HISTOGRAM\r\n";
+const u8                g_szTitle2[]            = "## FAKE HISTOGRAM\r\n";
 
 const u8* const         g_aszConditionNames[] = {
                                                     "Active display",
