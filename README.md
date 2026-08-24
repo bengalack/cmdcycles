@@ -35,7 +35,7 @@ The cycle chart is showing the smallest possible measured command execution. The
 
 ## Download
 
-* Find the precompiled com file(s) in the dska\folder. The normal output file is called `cmdcycle.com`, but there is a compile setting which sets the specific wait-after-sync-method (not the same was "wait for execution to finish"). I have provided the 3 variants there as well, cand they are called:
+Find the precompiled com file(s) in the `dska\`-folder. The normal output file is called `cmdcycle.com`, but there is a compile setting which sets the specific wait-after-sync-method (not the same was "wait for execution to finish"). I have provided the 3 variants there as well, and they are called:
 
 `cmdcycl0.com` - wait-after-sync-method: no wait  
 `cmdcycl1.com` - wait-after-sync-method: incremental (counter)  
