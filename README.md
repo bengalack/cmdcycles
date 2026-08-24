@@ -21,12 +21,25 @@ Duration print: 4 minutes 15 seconds
 
 ## Understanding the results
 
-We should certainly explain here.
+The way it measures is:
+* Execute a command
+* Wait a known period (in cycles)
+* Check if operation is finished on not
+
+The cycle chart is showing the smallest possible measured command execution. The FAKE HISTOGRAM is not a histogram at all, it is the amount of repeated executions at each cycle count before it succeeded, and we moved on to try the next possibly value (one cycle lower than the previous). The fake histogram should be read from right to left, and the final value denotes the amount of tries before it found the lowest possible cycle duration for this command. This duration is found in the parentes.
 
 ## Requirements
 
 * **Run:** MSX2 or higher, MSX-DOS
 * **Build:** SDCC v4.2 or higher (tested with v4.5.24)
+
+## Download
+
+* Find the precompiled com file(s) in the dska\folder. The normal output file is called `cmdcycle.com`, but there is a compile setting which sets the specific wait-after-sync-method (not the same was "wait for execution to finish"). I have provided the 3 variants there as well, cand they are called:
+
+`cmdcycl0.com` - wait-after-sync-method: no wait
+`cmdcycl1.com` - wait-after-sync-method: incremental (counter)
+`cmdcycl2.com` - wait-after-sync-method: random (R-reg)
 
 ## Attributions
 
