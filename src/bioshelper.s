@@ -998,7 +998,7 @@ _in_active_area:
     xor     a                   ; toggle 0 and / 190
     ld      iyh,a
     vdpWriteReg 19              ; sets the line for the next interrupt
-    ; FALL THROUGH
+    jp      in_vblank           ; past line 190: no attempt now, wait for the active area (line 0)
 
 goodbye:
 	ld		a,#2                ; leave with S#2 set
