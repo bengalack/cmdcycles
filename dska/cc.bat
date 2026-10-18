@@ -1,1 +1,1 @@
-cmdcycle Panasonic_FS-A1GT > FS-A1GT.md 
+cmdcycle Panasonic_FS-A1ST > FS-A1ST.md 

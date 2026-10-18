@@ -89,6 +89,8 @@
 #define HIST_CALIB_TRIES    3       // -g: calibration attempts per delay value
 #define HIST_CMD_COLOR      0xAA    // -g: fixed colour for all commands (no colour-dependent timing)
 #define HIST_LOCK_FAILED    0xFFFF  // -g: histMeasureDelay result when no HR lock was possible
+#define SWEEP_LINEAR_MIN    48      // -n: from this delay value on, dispatch_vdp_test is linear in d (one calibration per cell)
+#define SWEEP_DISPATCH_SHORT 21     // -n: dispatch_vdp_test takes 21 cycles more before the OUT when d < 256 (ld a,l / cp #48 / jr nc after a not-taken jr nz)
 
 #define HIST_DRIFT_FAILED   0x7FFF  // -g: histMeasureDrift result when no lock was possible
 
@@ -156,6 +158,7 @@ typedef struct {
     u16                     nTries;         // 6 & 7 k * 228
     u16                     nPad;           // 8 & 9 waitExact N per attempt, from calibration
     u16                     nSyncMisses;    // 10 & 11 accumulated by histogram.s and histCalibrate
+    u8                      uStopOnSuccess; // 12    0xFF: stop at the first success (-n probes), 0: run all attempts
 } HistCombo;
 
 typedef struct {
@@ -222,7 +225,7 @@ extern void     histRelaxSyncCheck1(void);                   // relock mode: syn
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]           = "0.93";
+const u8                g_szVersion[]           = "0.95";
 const u8                g_szErrorMSX[]          = "MSX2 or higher is required";
 
 const u8                g_szTopLine1[]          = "cmdcycle v%s - %04hu-%02d-%02d %02d:%02d:%02d - %s  \r\n"; // markdown needs two spaces at end of line to force line break
@@ -231,7 +234,10 @@ const u8                g_szTopLine2x[]         = "* Sync method: %s, wait metho
 const u8                g_szTopLine3[]          = "* Result data on this T976x based system have a +1 cycle included\r\n";
 const u8                g_szTopLine4_1[]        = "* No real histogram - numbers mean 'times tried before success, moving to a smaller number'\r\n";
 const u8                g_szTopLine4_2[]        = "* Histogram type: True histogram\r\n";
+const u8                g_szTopLine4_3[]        = "* Method: phase sweep, k:%u sweeps of 228 per probe\r\n";
+const u8                g_szTopLine4_4[]        = "* %u is the lowest delay value measured: %u means %u or less\r\n";
 const u8                g_szTopLine2g[]         = "* VDP detected: %s%s, screen %d, mode: %s. (-i:%d -o:%d k:%u)\r\n";
+const u8                g_szTopLine2n[]         = "* VDP detected: %s%s, screen %d, mode: %s. (k:%u)\r\n";
 const u8                g_szTopLine2xg[]        = "* Sync method: Line interrupts + HR vernier lock per frame\r\n";
 const u8                g_szTopLine2xgR[]       = "* Sync method: Line interrupts + HR vernier lock per attempt (CPU/VDP clock drift: %d cycles per 1024 lines)\r\n";
 const u8                g_szTopLine2xgF[]       = "* Sync method: Line interrupts + HR vernier lock per attempt (CPU/VDP clock drift test failed)\r\n";
@@ -300,6 +306,7 @@ const u8                g_szHelptext[]          = "Usage:cmdcycle [opt] [sys]\r\
                                                   " -3 Mode: no screen\r\n"
                                                   " -t VBLANK timing\r\n"
                                                   " -g x y k Histogram (-h -g)\r\n"
+                                                  " -n k Sweep method (-h -n)\r\n"
                                                   "\r\n"
                                                   "sys: Show sys name in report";
 
@@ -316,6 +323,19 @@ const u8                g_szHelptextHist[]      = "Usage:cmdcycle -g x y k [sys]
                                                   "\r\n"
                                                   "-i -o -1 -2 -3 apply as\r\n"
                                                   "usual. -t is not supported.";
+
+                                                //"                             " // 29 chars (turbo r)
+const u8                g_szHelptextSweep[]     = "Usage:cmdcycle -n k [sys]\r\n"
+                                                  "\r\n"
+                                                  "Cycle table measured with\r\n"
+                                                  "the sweep method: every\r\n"
+                                                  "start position in the line\r\n"
+                                                  "is tried (k sweeps of 228).\r\n"
+                                                  "\r\n"
+                                                  "k: 1..%d\r\n"
+                                                  "\r\n"
+                                                  "-1 -2 -3 apply as usual.\r\n"
+                                                  "-i -o -t -g not supported.";
 
 const u8* const         aVDP_NAME[32] =
                         {
@@ -409,6 +429,8 @@ bool                    g_bHasT976xEngine;
 u8                      g_uCondition;
 bool                    g_bVBLANKTiming;
 bool                    g_bHistogramMode;       // -g x y
+bool                    g_bSweepMode;           // -n k: cycle table with the sweep method
+bool                    g_bForceRelock;         // -r (diagnostic, with -n/-g): lock per attempt even when the clocks don't drift
 bool                    g_bDriftMode;           // -d (hidden diagnostic): CPU/VDP clock drift
 bool                    g_bRelock;              // -g: CPU/VDP clocks drift, so lock before every attempt
 u16                     g_nT976xPasses;         // T976x detection: loop passes measured in one frame (-d report)
@@ -422,6 +444,7 @@ u16                     g_nMissSync1;           // -g diagnostics: sync check 1,
 u16                     g_nMissSync2;           // -g diagnostics: sync check 2, expected HR == 1 (histogram.s)
 u16                     g_nMissCalib;           // -g diagnostics: calibration verification not 1 mod 228
 u16                     g_nMissPhase;           // -g diagnostics: phase measurement after a run failed
+u16                     g_nCalibLmod;           // histCalibrate: attempt length mod 228 at pad HIST_PAD_MIN (last calibration)
 bool                    g_abHistTruncated[NUM_TESTS]; // -g: span hit the scratch buffer limit
 u8                      g_uHistU;               // -g: index into aHORZ_LEN
 u8                      g_uHistV;               // -g: index into aVERT_LEN
@@ -484,6 +507,8 @@ void initVarsAndRig(void)
     g_uOuterIterations  = DEFAULT_OUTER_LOOPS;
     g_bVBLANKTiming     = false;
     g_bHistogramMode    = false;
+    g_bSweepMode        = false;
+    g_bForceRelock      = false;
     g_bDriftMode        = false;
     g_bRelock           = false;
     g_iDrift            = 0;
@@ -706,6 +731,7 @@ bool histCalibrate(HistCombo* p)
         if((s1 != 0xff) && (s2 != 0xff))
         {
             u16 nMod = histPhaseDiff(s1, s2); // attempt length mod 228 with pad HIST_PAD_MIN
+            g_nCalibLmod = nMod;               // -n derives the pad of other delay values from this
 
             p->nPad = HIST_PAD_MIN + ((nMod <= 1) ? (1 - nMod) : (HIST_SWEEP_LEN + 1 - nMod));
 
@@ -766,6 +792,164 @@ s16 histMeasureDrift(HistCombo* p)
 }
 
 // ---------------------------------------------------------------------------
+// -n: the part of an attempt's length that depends on d: the OUT -> IN wait
+// (exactly d) plus dispatch_vdp_test's extra checks before the OUT for d < 256.
+u16 sweepVarLen(u16 nD)
+{
+    return nD + ((nD < 256) ? SWEEP_DISPATCH_SHORT : 0);
+}
+
+// ---------------------------------------------------------------------------
+// -n: pad for delay value nD, from one calibration at nD0 (Lmod0 = attempt
+// length mod 228 at pad HIST_PAD_MIN). Valid for nD, nD0 >= SWEEP_LINEAR_MIN
+// (dispatch_vdp_test's dynamic loop).
+u16 sweepPad(u16 nLmod0, u16 nD0, u16 nD)
+{
+    u16 nLmod = (nLmod0 + (sweepVarLen(nD) % HIST_SWEEP_LEN) + HIST_SWEEP_LEN - (sweepVarLen(nD0) % HIST_SWEEP_LEN)) % HIST_SWEEP_LEN; // never negative
+
+    return HIST_PAD_MIN + ((nLmod <= 1) ? (1 - nLmod) : (HIST_SWEEP_LEN + 1 - nLmod));
+}
+
+// ---------------------------------------------------------------------------
+// -n: does at least one of the k * 228 attempts at nDelay succeed?
+// Returns 1, 0, or HIST_LOCK_FAILED. Stops at the first success.
+u16 sweepProbe(HistCombo* p, u16 nDelay, u16 nLmod0, u16 nD0)
+{
+    p->nDelay = nDelay;
+    p->uGuardLine = (u8)(211 - (nDelay + HIST_OVERHEAD_MAX) / HIST_SWEEP_LEN - 2); // an attempt started on this line ends by line 211
+
+    u16 nCount;
+    if(g_bRelock)                           // drifting clocks: a lock per attempt, no calibration
+        nCount = histMeasureDelayRelock(p);
+    else
+    {
+        if(nDelay < SWEEP_LINEAR_MIN)       // direct stubs: no linear model, calibrate this value
+            histCalibrate(p);
+        else
+            p->nPad = sweepPad(nLmod0, nD0, nDelay);
+
+        nCount = histMeasureDelay(p);
+    }
+
+    if(nCount == HIST_LOCK_FAILED)
+        return HIST_LOCK_FAILED;
+
+    return (nCount > 0) ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------
+// -n: smallest delay value at which at least one attempt succeeds, for the
+// cell in *p (binary search, see the spec). nInit: initial delay of the cell
+// (from establishInitialDelays, includes LEEWAY). Returns HIST_LOCK_FAILED if
+// no lock was possible.
+u16 sweepFindMin(HistCombo* p, u16 nInit)
+{
+    u16 nLmod0 = 0;
+    if(!g_bRelock)                          // one calibration per cell (LINE takes another setup branch per size)
+    {
+        p->nDelay = nInit;
+        histCalibrate(p);
+        nLmod0 = g_nCalibLmod;
+    }
+
+    u16 nStep = LEEWAY + 2 * INITIAL_LOOP_CYCLES;
+    u16 nHi = nInit;                        // must succeed
+    u16 nLo = (nInit > nStep + HIST_MIN_DELAY) ? (nInit - nStep) : HIST_MIN_DELAY; // must fail
+    u16 nRes;
+
+    while(true)                             // widen upwards until hi succeeds
+    {
+        nRes = sweepProbe(p, nHi, nLmod0, nInit);
+        if(nRes == HIST_LOCK_FAILED)
+            return HIST_LOCK_FAILED;
+        if(nRes)
+            break;
+        nHi += LEEWAY;
+    }
+
+    while(true)                             // widen downwards until lo fails (or the floor succeeds)
+    {
+        nRes = sweepProbe(p, nLo, nLmod0, nInit);
+        if(nRes == HIST_LOCK_FAILED)
+            return HIST_LOCK_FAILED;
+        if(!nRes)
+            break;
+        if(nLo == HIST_MIN_DELAY)
+            return HIST_MIN_DELAY;          // floor reached and it still succeeds
+        nHi = nLo;
+        nLo = (nLo > 2 * INITIAL_LOOP_CYCLES + HIST_MIN_DELAY) ? (nLo - 2 * INITIAL_LOOP_CYCLES) : HIST_MIN_DELAY;
+    }
+
+    while(nHi - nLo > 1)                    // invariant: probe(nLo) fails, probe(nHi) succeeds
+    {
+        u16 nMid = nLo + (nHi - nLo) / 2;
+        nRes = sweepProbe(p, nMid, nLmod0, nInit);
+        if(nRes == HIST_LOCK_FAILED)
+            return HIST_LOCK_FAILED;
+        if(nRes)
+            nHi = nMid;
+        else
+            nLo = nMid;
+    }
+
+    return nHi;
+}
+
+// ---------------------------------------------------------------------------
+// -n: the whole CYCLES table with the sweep method. Results (incl. the T976x
+// +1, as in runTest) go into g_anResultDelays.
+bool runSweepTest(void)
+{
+    HistCombo oParams;
+
+    oParams.nTries         = g_nSweeps * HIST_SWEEP_LEN;
+    oParams.nSyncMisses    = 0;
+    oParams.uStopOnSuccess = 0xFF;          // a probe only needs one success
+
+    u16 nAdd = g_bHasT976xEngine ? 1 : 0;   // see runTest
+
+    histInit(g_bHasT976xEngine);
+    g_uCmdColor = HIST_CMD_COLOR;
+
+    g_iDrift  = histMeasureDrift(&oParams); // coupled clocks: free-run per frame, else a lock per attempt
+    g_bRelock = (g_iDrift != 0) || g_bForceRelock; // also when the drift test failed (HIST_DRIFT_FAILED); -r forces it
+
+    if(g_bRelock)
+        histRelaxSyncCheck1();              // see histLock
+
+    bool bOk = true;
+
+    for(u8 c = 0; bOk && (c < NUM_TESTS); c++)
+    {
+        oParams.uCmd = aEXECUTE_CMD[c];
+
+        for(u8 v = 0; bOk && (v < NUM_VERTICALS); v++)
+        {
+            oParams.uH = aVERT_LEN[v];
+
+            for(u8 u = 0; bOk && (u < NUM_HORIZONTALS); u++)
+            {
+                oParams.uW = aHORZ_LEN[u];
+
+                u16 nMin = sweepFindMin(&oParams, g_anResultDelays[c][u][v]);
+                if(nMin == HIST_LOCK_FAILED)
+                {
+                    ERROR_CODE = 6;
+                    bOk = false;
+                }
+                else
+                    g_anResultDelays[c][u][v] = nMin + nAdd;
+            }
+        }
+    }
+
+    g_uCmdColor = 0;
+    g_nTotalSyncMisses = oParams.nSyncMisses;
+
+    return bOk;
+}
+
+// ---------------------------------------------------------------------------
 // Phase 2 of -g mode: for each test, walk down from W (phase 1) until no
 // attempt succeeds, then up until all attempts succeed. Stores the CDF counts
 // (successes per delay value) of the span in g_aoHistogram.
@@ -777,6 +961,7 @@ bool runHistTest(void)
     oParams.uH          = aVERT_LEN[g_uHistV];
     oParams.nTries      = g_nSweeps * HIST_SWEEP_LEN;
     oParams.nSyncMisses = 0;
+    oParams.uStopOnSuccess = 0;             // the histogram needs every attempt
 
     u16 nAdd = g_bHasT976xEngine ? 1 : 0; // see runTest
 
@@ -784,7 +969,7 @@ bool runHistTest(void)
     g_uCmdColor = HIST_CMD_COLOR;
 
     g_iDrift  = histMeasureDrift(&oParams); // coupled clocks: free-run per frame, else a lock per attempt
-    g_bRelock = (g_iDrift != 0);            // also when the drift test failed (HIST_DRIFT_FAILED)
+    g_bRelock = (g_iDrift != 0) || g_bForceRelock; // also when the drift test failed (HIST_DRIFT_FAILED); -r forces it
 
     if(g_bRelock)
         histRelaxSyncCheck1(); // drift: sync check 1 gets one cycle of slack, else ~3% of good locks are rejected (see histLock)
@@ -1003,10 +1188,15 @@ void runTests(void)
     
     establishInitialDelays();
 
-    bool bOk = runTest();
+    if(g_bSweepMode)
+        runSweepTest();
+    else
+    {
+        bool bOk = runTest();
 
-    if(bOk && g_bHistogramMode)
-        runHistTest();
+        if(bOk && g_bHistogramMode)
+            runHistTest();
+    }
 
     vdpScreenEnabled(true);
     vdpSpritesEnabled(true);
@@ -1017,6 +1207,8 @@ void runTests(void)
 void printReportTop(DateTime* pDateTime, bool bRealHistogram)
 {
     u8* szT976x = g_bHasT976xEngine ? " (T976x)" : "";
+    bool bSweep   = g_bSweepMode;
+    bool bNewSync = bRealHistogram || bSweep; // HR vernier lock (-g and -n)
 
     // Top words first ------------------------
     sprintf(g_auBuffer,
@@ -1044,6 +1236,15 @@ void printReportTop(DateTime* pDateTime, bool bRealHistogram)
                 g_uOuterIterations,
                 g_nSweeps
                );
+    else if(bSweep)
+        sprintf(g_auBuffer,
+                g_szTopLine2n,
+                aVDP_NAME[g_uVDPModel],
+                szT976x,
+                SCREEN_MODE,
+                g_aszConditionNames[g_uCondition],
+                g_nSweeps
+               );
     else
         sprintf(g_auBuffer,
                 g_szTopLine2,
@@ -1057,7 +1258,7 @@ void printReportTop(DateTime* pDateTime, bool bRealHistogram)
 
     print(g_auBuffer);
 
-    if(bRealHistogram)
+    if(bNewSync)
     {
         if(!g_bRelock)
             print(g_szTopLine2xg);
@@ -1083,12 +1284,24 @@ void printReportTop(DateTime* pDateTime, bool bRealHistogram)
     if(g_bHasT976xEngine)
         print(g_szTopLine3);
 
-    if(bRealHistogram)
+    if(bNewSync)
     {
-        print(g_szTopLine4_2);
+        if(bRealHistogram)
+        {
+            print(g_szTopLine4_2);
 
-        sprintf(g_auBuffer, g_szTopLine5, (u16)(g_nSweeps * HIST_SWEEP_LEN), g_nSweeps, HIST_SWEEP_LEN); // fits u16, k <= HIST_MAX_SWEEPS
-        print(g_auBuffer);
+            sprintf(g_auBuffer, g_szTopLine5, (u16)(g_nSweeps * HIST_SWEEP_LEN), g_nSweeps, HIST_SWEEP_LEN); // fits u16, k <= HIST_MAX_SWEEPS
+            print(g_auBuffer);
+        }
+        else
+        {
+            sprintf(g_auBuffer, g_szTopLine4_3, g_nSweeps);
+            print(g_auBuffer);
+
+            u16 nFloor = HIST_MIN_DELAY + (g_bHasT976xEngine ? 1 : 0); // as printed (see runSweepTest)
+            sprintf(g_auBuffer, g_szTopLine4_4, nFloor, nFloor, nFloor);
+            print(g_auBuffer);
+        }
 
         if(g_nTotalSyncMisses > 0) // only worth mentioning when something went wrong
         {
@@ -1103,8 +1316,9 @@ void printReportTop(DateTime* pDateTime, bool bRealHistogram)
 }
 
 // ---------------------------------------------------------------------------
-// Outputs markdown (easy to paste into github or other markdown viewers)
-void printReportBody()
+// Outputs markdown (easy to paste into github or other markdown viewers).
+// bWithFakeHistogram: false in -n mode (there is no such data).
+void printReportBody(bool bWithFakeHistogram)
 {
     print(g_szTitle1);
     print(g_szEmptyLine);
@@ -1165,8 +1379,10 @@ void printReportBody()
     }
 
     sprintf(g_auBuffer, g_szTotalLine, ulTotal);
-    print(g_auBuffer);    
+    print(g_auBuffer);
 
+    if(!bWithFakeHistogram)
+        return;
 
     print(g_szEmptyLine);
     print(g_szTitle2);
@@ -1358,6 +1574,13 @@ void printHelpHist(void)
 }
 
 // ---------------------------------------------------------------------------
+void printHelpSweep(void)
+{
+    sprintf(g_auBuffer, g_szHelptextSweep, HIST_MAX_SWEEPS);
+    print(g_auBuffer);
+}
+
+// ---------------------------------------------------------------------------
 // Returns the index of iVal in pTable, or 0xff if not found
 u8 findLenIndex(const u8* pTable, u8 uLen, s16 iVal)
 {
@@ -1385,6 +1608,9 @@ void calcDuration(DateTime* p1, DateTime* p2, DateTime* pDuration)
 u8 commandLineParameters(char** argv, u8 argc)
 {
     // ------------------------------------
+    bool bInnerSet = false;             // -i / -o given (not allowed with -n)
+    bool bOuterSet = false;
+
     // Check params
     if(argc > 0)
     {
@@ -1396,6 +1622,8 @@ u8 commandLineParameters(char** argv, u8 argc)
             {
                 if((n + 1 < argc) && (strcmp(argv[n+1], "-g") == 0))
                     printHelpHist();
+                else if((n + 1 < argc) && (strcmp(argv[n+1], "-n") == 0))
+                    printHelpSweep();
                 else
                     printHelp();
                 return 0;
@@ -1415,6 +1643,10 @@ u8 commandLineParameters(char** argv, u8 argc)
             else if(strcmp(argv[n], "-d") == 0) // hidden diagnostic, not in the help
             {
                 g_bDriftMode = true;
+            }
+            else if(strcmp(argv[n], "-r") == 0) // hidden diagnostic: force the turbo R path (lock per attempt), not in the help
+            {
+                g_bForceRelock = true;
             }
             else if(strcmp(argv[n], "-t") == 0)
             {
@@ -1463,6 +1695,24 @@ u8 commandLineParameters(char** argv, u8 argc)
                 g_uFirstV = uV;
                 g_uEndV   = uV + 1;
             }
+            else if(strcmp(argv[n], "-n") == 0)
+            {
+                if(n + 1 >= argc)
+                {
+                    print("ERROR:Missing value for -n");
+                    return 1;
+                }
+
+                iVal = atoi(argv[++n]);
+                if((iVal < 1) || (iVal > HIST_MAX_SWEEPS))
+                {
+                    sprintf(g_auBuffer, "ERROR:k for -n must be in range 1-%d", HIST_MAX_SWEEPS);
+                    print(g_auBuffer);
+                    return 1;
+                }
+                g_nSweeps    = (u16)iVal;
+                g_bSweepMode = true;
+            }
 
             else if(strcmp(argv[n], "-i") == 0)
             {
@@ -1480,6 +1730,7 @@ u8 commandLineParameters(char** argv, u8 argc)
                     return 1;
                 }
                 g_uInnerIterations = (u8)iVal;
+                bInnerSet = true;
             }
             else if(strcmp(argv[n], "-o") == 0)
             {
@@ -1496,6 +1747,7 @@ u8 commandLineParameters(char** argv, u8 argc)
                     return 1;
                 }
                 g_uOuterIterations = (u8)iVal;
+                bOuterSet = true;
             }
             else
             {
@@ -1514,6 +1766,25 @@ u8 commandLineParameters(char** argv, u8 argc)
         {
             print("ERROR:-t can't be used with -g");
             return 1;
+        }
+
+        if(g_bSweepMode) // the old method's options do not apply to -n
+        {
+            if(g_bHistogramMode)
+            {
+                print("ERROR:-g can't be used with -n");
+                return 1;
+            }
+            if(g_bVBLANKTiming)
+            {
+                print("ERROR:-t can't be used with -n");
+                return 1;
+            }
+            if(bInnerSet || bOuterSet)
+            {
+                print("ERROR:-i/-o can't be used with -n");
+                return 1;
+            }
         }
     }
 
@@ -1647,7 +1918,7 @@ u8 main(char** argv, u8 argc)
         if(g_bHistogramMode)
             printReportBodyHist();
         else
-            printReportBody();
+            printReportBody(!g_bSweepMode);
     }
 
     // ----------------------------------

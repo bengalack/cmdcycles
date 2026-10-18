@@ -399,7 +399,7 @@ hist_load_regs:
 ; IN:       IXH - W, IXL - H, IYH - command, IYL - attempts this frame
 ;           BC' - remaining attempts (> 0), DE' - 0, HL' - successes
 ;           (nHfDelay), (nHfPad), (uFhMask), S#2 selected, DI
-; OUT:      carry clear: all attempts done
+; OUT:      carry clear: all attempts done (or first success with uStopMask)
 ;           carry set: guard line reached (FH), IYL = attempts this frame
 ; MODIFIES: AF, BC, DE, HL, IYL, BC', HL'
 hfRun::
@@ -417,6 +417,8 @@ hf_try:
     ld      a,b
     rra                             ; carry = busy (CE)
     ccf                             ; carry = done
+    sbc     a,a                     ; A = 0xFF if done, else 0 (carry unchanged)
+    ld      e,a                     ; E = done mask (main DE is scratch here)
     exx
     adc     hl,de                   ; successes += done (DE' = 0), no branch
     dec     bc                      ; remaining attempts
@@ -424,6 +426,9 @@ hf_try:
     or      c
     exx
     jp      z,hf_all_done
+    ld      a,(uStopMask)           ; 0xFF: stop at the first success (-n probes)
+    and     e
+    jp      nz,hf_all_done          ; done and stop wanted (constant cost when not taken)
     inc     iyl                     ; attempts this frame
     ld      a,#1
     vdpWriteReg 15                  ; S#1
@@ -508,6 +513,7 @@ _histPhaseAfterRun::
 
     xor     a
     ld      (uFhMask),a             ; ignore the guard line
+    ld      (uStopMask),a           ; calibration runs all its attempts (A = 0)
 
     ld      b,d
     ld      c,e
@@ -565,6 +571,8 @@ _histMeasureDelay::
     ld      (uHfOffset),a
     inc     a
     ld      (uFhMask),a             ; honour the guard line
+    ld      a,12(ix)
+    ld      (uStopMask),a           ; HistCombo.uStopOnSuccess
 
     ld      c,6(ix)
     ld      b,7(ix)                 ; nTries
@@ -669,6 +677,8 @@ _histMeasureDelayRelock::
     xor     a
     ld      (uHfOffset),a           ; position i of the next attempt
     ld      (uFhMask),a             ; hfRun runs one attempt and exits before its FH check
+    ld      a,12(ix)
+    ld      (uStopMask),a           ; HistCombo.uStopOnSuccess
 
     ld      l,6(ix)
     ld      h,7(ix)
@@ -726,6 +736,16 @@ rm_attempt:
     exx
     ld      iyl,#0
     call    hfRun                   ; one attempt, exits through hf_all_done
+
+    ld      a,(uStopMask)           ; stop at the first success? (not timed)
+    or      a
+    jr      z,rm_no_stop
+    exx
+    ld      a,h
+    or      l                       ; HL' = successes
+    exx
+    jp      nz,rm_done
+rm_no_stop:
 
     ld      a,(uHfOffset)           ; next position (not timed)
     inc     a
@@ -839,6 +859,8 @@ nHfPad:
     .dw 0                           ; waitExact N at the end of each attempt
 uFhMask:
     .db 0                           ; 1: stop at the guard line, 0: ignore it (calibration)
+uStopMask:
+    .db 0                           ; 0xFF: a measurement ends at the first success (HistCombo.uStopOnSuccess)
 uHfOffset:
     .db 0                           ; start position of the next frame's first attempt (0..227)
 uVcCap:

@@ -3,8 +3,8 @@
 
 @REM set MACHINE=Sanyo_phc-70FD2
 @REM set MACHINE=Philips_NMS_8255
-set MACHINE=Panasonic_FS-A1GT
-@REM set MACHINE=Sony_HB-F1XD
+set MACHINE=Panasonic_FS-A1ST
+@REM  set MACHINE=Sony_HB-F1XD
 @REM set MACHINE=Panasonic_FS-A1FM
 @REM set MACHINE=Al_Alamiah_AX370
 

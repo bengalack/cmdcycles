@@ -1,7 +1,7 @@
 # Cycle table with the phase-sweep method (`-n k`) — design
 
 Date: 2026-10-14
-Status: draft, pending spec review
+Status: approved (2026-10-18)
 Builds on: `2026-10-12-histogram-v2-design.md` (the `-g` sweep measurement)
 
 ## Goal
@@ -78,14 +78,30 @@ is part of the calibrated period). Calibration runs with the mask cleared.
   `Lmod(d) = (Lmod0 + d - d0) mod 228` and
   `pad(d) = HIST_PAD_MIN + ((1 - Lmod(d)) mod 228)` — integer math in C, no
   extra frames.
+- Correction found in testing (2026-10-18): before the OUT, `dispatch_vdp_test`
+  takes 21 cycles more for d < 256 (`ld a,l / cp #48 / jr nc` after a
+  not-taken `jr nz`) than for d ≥ 256. So the d-dependent length is
+  `d + (d < 256 ? 21 : 0)` (`sweepVarLen`, `SWEEP_DISPATCH_SHORT`). Without
+  it, 42% of the derived pads were wrong (sweeps skipped start positions,
+  cells came out 1–2 cycles too high). Verified with a temporary
+  calibrate-every-probe build: 0 of 3390 derived pads differed.
 - d < 48 uses the direct stubs (different code per d): calibrate per probe.
 - Per cell, not per test: `setVDPCmdParamsNI_asm` takes a different branch
   for LINE when w < h, so the setup length differs between sizes.
 
 ### Start-line rotation
 
-Removed again. The test (`g1r` = `g1o`) showed no effect, and it costs lines
-per frame.
+Removed (done in v0.93). The test (`g1r` = `g1o`) showed no effect, and it
+cost lines per frame.
+
+### Drifting CPU/VDP clocks (turbo R)
+
+Same as `-g` (v2 spec, section 3.8): at the start of a `-n` run the drift is
+measured (`histMeasureDrift`). If it is not 0 (or the test fails), every probe
+uses `histMeasureDelayRelock` (a lock before every attempt, the position
+waited explicitly, check 1 with one cycle of slack via `histRelaxSyncCheck1`).
+No calibration is needed in that mode. Stop-on-success applies there too:
+after an attempt that succeeded, the probe ends.
 
 ## Command line and help (`main.c`)
 
@@ -156,9 +172,8 @@ k: 1..%d
 - New `runSweepTest()`: `histInit`, fixed colour, then for each test, size:
   the search above, result `dMin + nAdd` into `g_anResultDelays[c][u][v]`
   (same table as the old method, so `printReportBody` prints it unchanged).
-- `HistCombo` is reused. New field: `bStopOnSuccess` (offset 12, replacing
-  `uRotLines`).
-- `histCalibrate` returns (or stores) `Lmod` so the pad can be derived for
+- `HistCombo` is reused. New field: `uStopOnSuccess` (offset 12; 0xFF = on).
+- `histCalibrate` stores `Lmod` (`g_nCalibLmod`) so the pad can be derived for
   other d. New helper `sweepPad(Lmod0, d0, d)`.
 - New helper `probe(p, d)` = guard line + pad (calibrate when d < 48) +
   `histMeasureDelay` with stop-on-success; returns bool. `HIST_LOCK_FAILED`
@@ -179,10 +194,13 @@ k: 1..%d
 ## Memory
 
 - Expected +1 to 1.5 KB code (C search and helpers, small asm changes).
-  The image was 0xD27C; the HIMEM check guards it at runtime.
+  The heap is no longer part of the image (image end 0x6EBA at v0.93); the
+  heap is the free memory up to HIMEM, so extra code makes the heap smaller.
+- `-n` itself needs almost no heap (results go into `g_anResultDelays`, no
+  fake histogram).
 - Each implementation task records `l__CODE`, `l__DATA`, `s__HEAP`.
-- If it gets too tight: lower `MY_HEAP_SIZE` (the fake histogram heap is
-  unused in `-n` mode), as discussed before.
+- Watch: the old method's FAKE HISTOGRAM needs up to ~22 KB of heap. If a
+  normal run ever ends with ERROR 3 on a machine, disable only that part.
 
 ## Run time (estimate)
 
@@ -194,7 +212,10 @@ k: 1..%d
 
 ## Out of scope
 
-- Replacing the old method as default (later, after comparisons).
+- Replacing the old method as default (later, after comparisons). When the
+  old method's `-i` / `-o` are removed, the freed help lines go to `-r`
+  (hidden today: forces the lock-per-attempt path of drifting clocks, so it
+  can be tested in openMSX, which never drifts; kept on purpose).
 - Noise refinement beyond k (e.g. re-checking d−1, d−2 with a higher k).
 - Changing the `-g` report or measurement (apart from removing the rotation
   and adding the stop-on-success option, which `-g` leaves off).
