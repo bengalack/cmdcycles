@@ -659,10 +659,12 @@ restoreISRAndSetS0NoLineInt_NI:
 
 	ld		a, #1               ; ensure there are no pending line inter (read flag)
     vdpWriteReg 15
+    nop                         ; VDP I/O: >= 15 cycles between accesses (OUT -> IN is 12 without this)
     in      a,(VDPPORT1)        ; read VDP S#n to reset VBLANK IRQ (F flag is set on VBLANK int)
 
 	xor     a                   ; ensure there are no interrupts (read flag)
     vdpWriteReg 15
+    nop                         ; VDP I/O: >= 15 cycles between accesses (OUT -> IN is 12 without this)
     in      a,(VDPPORT1)        ; read VDP S#n to reset VBLANK IRQ (F flag is set on VBLANK int)
 
     ret
@@ -957,10 +959,12 @@ _cleanupLineInterruptsNI::
 
 	ld		a, #1               ; ensure there are no pending line inter (read flag)
     vdpWriteReg 15
+    nop                         ; VDP I/O: >= 15 cycles between accesses (OUT -> IN is 12 without this)
     in      a,(VDPPORT1)        ; read VDP S#n to reset VBLANK IRQ (F flag is set on VBLANK int)
 
 	xor     a                   ; ensure there are no interrupts (read flag)
     vdpWriteReg 15
+    nop                         ; VDP I/O: >= 15 cycles between accesses (OUT -> IN is 12 without this)
     in      a,(VDPPORT1)        ; read VDP S#n to reset VBLANK IRQ (F flag is set on VBLANK int)
 
     ret
@@ -998,7 +1002,7 @@ _in_active_area:
     xor     a                   ; toggle 0 and / 190
     ld      iyh,a
     vdpWriteReg 19              ; sets the line for the next interrupt
-    ; FALL THROUGH
+    jp      in_vblank           ; past line 190: no attempt now, wait for the active area (line 0)
 
 goodbye:
 	ld		a,#2                ; leave with S#2 set

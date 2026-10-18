@@ -5,8 +5,9 @@ sdasz80 -o -s -p -g -w out\dos_crt.rel src\dos_crt.s
 sdasz80 -o -s -p -g -w out\vdp.rel src\vdp.s
 sdasz80 -o -s -p -g -w out\bioshelper.rel src\bioshelper.s
 sdasz80 -o -s -p -g -w out\cycle-test.z80.rel src\cycle-test.z80.s
-sdasz80 -o -s -p -g -w out\vdpwaits.rel src\vdpwaits.s
+sdasz80 -o -s -p -g -w out\histogram.rel src\histogram.s
+sdasz80 -o -s -p -g -w out\iowait.rel src\iowait.s
 @REM sdcc --code-loc 0x010E --data-loc 0 -mz80 --no-std-crt0 --opt-code-speed out\dos_crt.rel out\vdp.rel src\main.c -o out\%NAME%.ihx
-sdcc --code-loc 0x0180 --data-loc 0 -mz80 --no-std-crt0 --opt-code-speed  out\dos_crt.rel out\vdp.rel out\bioshelper.rel out\cycle-test.z80.rel out\vdpwaits.rel src\main.c -o out\%NAME%.ihx
+sdcc --code-loc 0x0180 --data-loc 0 -mz80 --no-std-crt0 --opt-code-speed  out\dos_crt.rel out\vdp.rel out\bioshelper.rel out\cycle-test.z80.rel out\histogram.rel out\iowait.rel src\main.c -o out\%NAME%.ihx
 
 makebin -s 65535 -p -o 0x100 out\%NAME%.ihx dska\%NAME%.com

@@ -48,3 +48,4 @@ Find the precompiled com file(s) in the `dska\`-folder. The normal output file i
 ## License
 
 https://creativecommons.org/licenses/by-sa/4.0/
+

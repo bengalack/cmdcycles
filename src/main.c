@@ -72,13 +72,43 @@
 
 #define INITIAL_LOOP_CYCLES 33      // max size: 63 (!)
 #define SCRATCH_HIST_SIZE   1024
-#define MY_HEAP_SIZE        28000   // size in bytes
+#define HEAP_MIN_SIZE       1024    // bytes: the heap is the free memory between the image and HIMEM (minus STACK_RESERVE)
 #define BUFFER_SIZE         1024    // size of g_auBuffer, in bytes (help text is the greatest consumer of this buffer)
 #define HIST_STR_BUF_SIZE   1024    // size of g_auHistStrBuf, in bytes
 #define LEEWAY              150     // add a buffer to the initial delay to avoid having the real test MISS hitting the initial measurement (happens on turboR in emulator)
+#define STACK_RESERVE       512     // bytes that must stay free between the program image and HIMEM
+#define HIMEM               0xFC4A  // system variable: highest usable address
 
 #define DEFAULT_INNER_LOOPS 64      // 0 = 256
 #define DEFAULT_OUTER_LOOPS 3
+#define HIST_SWEEP_LEN      228     // -g: Z80 cycles per display line = start positions per sweep
+#define HIST_MAX_SWEEPS     287     // -g: 287 * 228 = 65436, fits u16
+#define HIST_MIN_DELAY      20      // -g: dispatch_vdp_test can't make all delay values below 20
+#define HIST_OVERHEAD_MAX   1400    // -g: safe upper bound in cycles for one attempt minus d (setup, checks, pad)
+#define HIST_PAD_MIN        48      // -g: waitExact minimum (histogram.s)
+#define HIST_CALIB_TRIES    3       // -g: calibration attempts per delay value
+#define HIST_CMD_COLOR      0xAA    // -g: fixed colour for all commands (no colour-dependent timing)
+#define HIST_LOCK_FAILED    0xFFFF  // -g: histMeasureDelay result when no HR lock was possible
+
+#define HIST_DRIFT_FAILED   0x7FFF  // -g: histMeasureDrift result when no lock was possible
+
+// T976x detection (measureVDPPollsInOneFrame, iowait.s): loop passes in one
+// frame, 35 cycles per pass without extra VDP I/O wait, 36 with the T976x +1.
+// NTSC frame 59736 cycles, PAL 71364. The threshold is in the middle (a margin
+// of ~850 / ~1000 cycles either way). Fewer passes than the threshold: T976x.
+#define T976X_THRESHOLD_NTSC 1683   // middle of 1707 (59736 / 35) and 1659 (59736 / 36)
+#define T976X_THRESHOLD_PAL  2010   // middle of 2039 (71364 / 35) and 1982 (71364 / 36)
+
+// Plausible counts: from the T976x value minus half the gap to the normal value
+// plus half the gap. Outside: unexpected CPU timing (e.g. cartridge wait states).
+#define T976X_MEASUREMENTS   3      // frames measured; the smallest count is used (see detectT976xEngine)
+#define T976X_PASSES_MIN_NTSC 1635  // 1659 - 24
+#define T976X_PASSES_MAX_NTSC 1731  // 1707 + 24
+#define T976X_PASSES_MIN_PAL  1954  // 1982 - 28
+#define T976X_PASSES_MAX_PAL  2067  // 2039 + 28
+
+#define DRIFT_RUNS          4       // -d: repeats
+#define DRIFT_STEPS         4       // -d: wait lengths, see g_auDriftBlocks
 
 #define SCREEN_MODE         8 // 5? 8?
 
@@ -116,6 +146,17 @@ typedef struct {
     u16                     nHistogramLength;
     u16                     nHistogramStartValue;
 } Histogram;
+
+typedef struct {
+    u8                      uW;             // 0
+    u8                      uH;             // 1
+    u8                      uCmd;           // 2
+    u8                      uGuardLine;     // 3     last line an attempt may start on
+    u16                     nDelay;         // 4 & 5
+    u16                     nTries;         // 6 & 7 k * 228
+    u16                     nPad;           // 8 & 9 waitExact N per attempt, from calibration
+    u16                     nSyncMisses;    // 10 & 11 accumulated by histogram.s and histCalibrate
+} HistCombo;
 
 typedef struct {
     u16                     nYear;      // 1980-
@@ -166,19 +207,36 @@ extern u8       getVDPModel(void);
 // from cycle-test.z80.s
 extern u8       dispatch_vdp_test(u8 uVDP_CMD, u16 nTargetDelay); // returns CMD status after wait (bit 0 is set if busy)
 
-// from vdpwaitasm.s
-extern u16      measureVDPCommandsInOneFrame(void);
+// from iowait.s
+extern u16      measureVDPPollsInOneFrame(void);
+
+// from histogram.s
+extern void     histInit(bool bT976x);
+extern u8       histPhaseAfterRun(HistCombo* p, u16 nTries); // samples until the HR edge, 0xFF = failed
+extern u16      histMeasureDelay(HistCombo* p);              // successes out of p->nTries
+extern u16      getImageEnd(void);
+extern u8       histDriftPhase(HistCombo* p, u16 nBlocks);   // samples until the HR edge after a wait, 0xFF = failed
+extern u16      histMeasureDelayRelock(HistCombo* p);        // like histMeasureDelay, but a lock before every attempt
+extern void     histRelaxSyncCheck1(void);                   // relock mode: sync check 1 one cycle earlier (edge - 2)
 
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]           = "0.82";
+const u8                g_szVersion[]           = "0.93";
 const u8                g_szErrorMSX[]          = "MSX2 or higher is required";
 
 const u8                g_szTopLine1[]          = "cmdcycle v%s - %04hu-%02d-%02d %02d:%02d:%02d - %s  \r\n"; // markdown needs two spaces at end of line to force line break
 const u8                g_szTopLine2[]          = "* VDP detected: %s%s, screen %d, mode: %s. (-i:%d -o:%d)\r\n";
 const u8                g_szTopLine2x[]         = "* Sync method: %s, wait method: %s\r\n";
 const u8                g_szTopLine3[]          = "* Result data on this T976x based system have a +1 cycle included\r\n";
+const u8                g_szTopLine4_1[]        = "* No real histogram - numbers mean 'times tried before success, moving to a smaller number'\r\n";
+const u8                g_szTopLine4_2[]        = "* Histogram type: True histogram\r\n";
+const u8                g_szTopLine2g[]         = "* VDP detected: %s%s, screen %d, mode: %s. (-i:%d -o:%d k:%u)\r\n";
+const u8                g_szTopLine2xg[]        = "* Sync method: Line interrupts + HR vernier lock per frame\r\n";
+const u8                g_szTopLine2xgR[]       = "* Sync method: Line interrupts + HR vernier lock per attempt (CPU/VDP clock drift: %d cycles per 1024 lines)\r\n";
+const u8                g_szTopLine2xgF[]       = "* Sync method: Line interrupts + HR vernier lock per attempt (CPU/VDP clock drift test failed)\r\n";
+const u8                g_szTopLine5[]          = "* Attempts per delay value: %u (k:%u * %d)\r\n";
+const u8                g_szTopLine6[]          = "* Sync misses: %u (vernier %u, check1 %u, check2 %u, calibration %u, phase %u)\r\n";
 const u8                g_szEmptyLine[]         = "\r\n";
 //                                              = "                                                                               "; // 79!
 const u8                g_szTitle1[]            = "## CYCLES\r\n";
@@ -195,6 +253,13 @@ const u8                g_szDurationTest[]      = "Duration test:  %d minutes %d
 const u8                g_szDurationPrint[]     = "Duration print: %d minutes %d seconds  \r\n"; // markdown needs two spaces at end of line to force line break
 
 const u8                g_szTitle2[]            = "## FAKE HISTOGRAM\r\n";
+const u8                g_szTitle3[]            = "## HISTOGRAM\r\n";
+const u8                g_szHistSize[]          = "### Size %dx%d\r\n";
+const u8                g_szHistTabHeader1[]    = "| Operation          | Minimum | %-54s|\r\n";
+const u8                g_szHistTabHeader2[]    = "|--------------------|:-------:|:------------------------------------------------------|\r\n";
+const u8                g_szHistTabRow[]        = "| %-18s | %-7s | "; // the numbers are printed one by one after this
+const u8                g_szHistColCount[]      = "Count";
+const u8                g_szHistColNorm[]       = "Normalized (%)";
 
 const u8* const         g_aszConditionNames[] = {
                                                     "Active display",
@@ -214,13 +279,13 @@ const u8                g_szWaitMethod[]         = "No wait";
 #endif
 
                                                 //"                             " // 29 chars (turbo r)
-const u8                g_szHelptext[]          = "Usage: cmdcycle [opt][sys]\r\n"
+const u8                g_szHelptext[]          = "Usage:cmdcycle [opt] [sys]\r\n"
                                                   "\r\n"
                                                   "Measure the duration of VDP\r\n"
                                                   "command in MSX Z80 cycles\r\n"
                                                   "(outside VBLANK area).\r\n"
                                                   "Format is markdown, written\r\n"
-                                                  "to stdout(redirect possible)\r\n"
+                                                  "to stdout (use redirection)\r\n"
                                                   "\r\n"
                                                   "Version: %s\r\n"
                                                   "Wait: %s\r\n"
@@ -234,8 +299,23 @@ const u8                g_szHelptext[]          = "Usage: cmdcycle [opt][sys]\r\
                                                   " -2 Mode: no sprites\r\n"
                                                   " -3 Mode: no screen\r\n"
                                                   " -t VBLANK timing\r\n"
+                                                  " -g x y k Histogram (-h -g)\r\n"
                                                   "\r\n"
                                                   "sys: Show sys name in report";
+
+                                                //"                             " // 29 chars (turbo r)
+const u8                g_szHelptextHist[]      = "Usage:cmdcycle -g x y k [sys]\r\n"
+                                                  "\r\n"
+                                                  "Histogram of the duration of\r\n"
+                                                  "one command size (x*y) for\r\n"
+                                                  "all tests.\r\n"
+                                                  "\r\n"
+                                                  "x: 1..%d (width)\r\n"
+                                                  "y: 1..%d (height)\r\n"
+                                                  "k: 1..%d sweeps of 228\r\n"
+                                                  "\r\n"
+                                                  "-i -o -1 -2 -3 apply as\r\n"
+                                                  "usual. -t is not supported.";
 
 const u8* const         aVDP_NAME[32] =
                         {
@@ -328,8 +408,31 @@ u8                      g_uOuterIterations;
 bool                    g_bHasT976xEngine;
 u8                      g_uCondition;
 bool                    g_bVBLANKTiming;
+bool                    g_bHistogramMode;       // -g x y
+bool                    g_bDriftMode;           // -d (hidden diagnostic): CPU/VDP clock drift
+bool                    g_bRelock;              // -g: CPU/VDP clocks drift, so lock before every attempt
+u16                     g_nT976xPasses;         // T976x detection: loop passes measured in one frame (-d report)
+s16                     g_iDrift;               // -g: measured drift in CPU cycles per 1024 lines (HIST_DRIFT_FAILED: no lock)
+u8                      g_auDrift[DRIFT_RUNS][DRIFT_STEPS]; // -d: vernier samples per run and wait length
+u8                      g_uCmdColor;            // R#44 for all VDP commands. 0: random (R reg), else fixed (read by vdp.s)
+u16                     g_nSweeps;              // -g: k
+u16                     g_nTotalSyncMisses;     // -g: sync misses over the whole run
+u16                     g_nMissVernier;         // -g diagnostics: vernier found no edge (histogram.s)
+u16                     g_nMissSync1;           // -g diagnostics: sync check 1, expected HR == 0 (histogram.s)
+u16                     g_nMissSync2;           // -g diagnostics: sync check 2, expected HR == 1 (histogram.s)
+u16                     g_nMissCalib;           // -g diagnostics: calibration verification not 1 mod 228
+u16                     g_nMissPhase;           // -g diagnostics: phase measurement after a run failed
+bool                    g_abHistTruncated[NUM_TESTS]; // -g: span hit the scratch buffer limit
+u8                      g_uHistU;               // -g: index into aHORZ_LEN
+u8                      g_uHistV;               // -g: index into aVERT_LEN
+u8                      g_uFirstU;              // sizes to test, range: [first, end)
+u8                      g_uEndU;
+u8                      g_uFirstV;
+u8                      g_uEndV;
 
-u16*                    g_pHeapHead;            // for MY_HEAP, jalla-malloc
+u16*                    g_pHeapHead;            // next free heap address, jalla-malloc
+u8*                     g_pHeapStart;           // heap: from the end of the program image ...
+u16                     g_nHeapSize;            // ... this many bytes (set at startup, up to HIMEM - STACK_RESERVE)
 
 u8                      ERROR_CODE;
 
@@ -338,16 +441,36 @@ u8                      g_auSysStr[MAX_SYS_LEN];// name of system
 u16                     g_anScratchHistogram[SCRATCH_HIST_SIZE];                        // scratch for sampling
 u16                     g_anResultDelays[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];    // Initial and results delays
 Histogram               g_aoHistogram[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];       // Condensed and tidy
-u8                      MY_HEAP[MY_HEAP_SIZE];                                          // Sadly, SDCC supports only 1024 kB from malloc...
 
 // ---------------------------------------------------------------------------
 // Must only be called when tR runs in z80 mode, normal ROM/RAM.
 // Approximation; if 1 extra cycle, we say that we have a T976x engine
-void detectT976xEngine(void)
+// Returns false when the count is outside both expected windows: then the CPU
+// is slowed (or sped up) by something else, e.g. a cartridge inserting wait
+// states, and no cycle-exact measurement is possible.
+bool detectT976xEngine(void)
 {
-    u16 nCmds = measureVDPCommandsInOneFrame();
-    u16 nComparableNumber = getPALRefreshRate()? (0x948-2) : (0x7C4-2); // setting a delta of 2 cycle to avoid false negatives
+    // Interrupts off: cartridge interrupts can not disturb it. But reading S#0 at
+    // the very moment the VDP sets the VBLANK flag can return 0 and clear it, so
+    // a frame boundary can be lost and the count covers two frames. A lost flag
+    // can only make a count too large, so the smallest of a few counts is used.
+    u16 nCmds = 0xFFFF;
+    for(u8 n = 0; n < T976X_MEASUREMENTS; n++)
+    {
+        u16 nCount = measureVDPPollsInOneFrame();
+        if(nCount < nCmds)
+            nCmds = nCount;
+    }
+    g_nT976xPasses = nCmds; // shown in the -d report
+
+    bool bPAL = getPALRefreshRate();
+    u16 nComparableNumber = bPAL ? T976X_THRESHOLD_PAL : T976X_THRESHOLD_NTSC;
     g_bHasT976xEngine = !(nCmds >= nComparableNumber);
+
+    if(bPAL)
+        return (nCmds >= T976X_PASSES_MIN_PAL) && (nCmds <= T976X_PASSES_MAX_PAL);
+
+    return (nCmds >= T976X_PASSES_MIN_NTSC) && (nCmds <= T976X_PASSES_MAX_NTSC);
 }
 
 // ---------------------------------------------------------------------------
@@ -360,10 +483,31 @@ void initVarsAndRig(void)
     g_uInnerIterations  = DEFAULT_INNER_LOOPS;
     g_uOuterIterations  = DEFAULT_OUTER_LOOPS;
     g_bVBLANKTiming     = false;
+    g_bHistogramMode    = false;
+    g_bDriftMode        = false;
+    g_bRelock           = false;
+    g_iDrift            = 0;
+    g_uCmdColor         = 0;
+    g_nSweeps           = 1;
+    g_nTotalSyncMisses  = 0;
+    g_nMissVernier      = 0;
+    g_nMissSync1        = 0;
+    g_nMissSync2        = 0;
+    g_nMissCalib        = 0;
+    g_nMissPhase        = 0;
+    memset(g_abHistTruncated, 0, sizeof(g_abHistTruncated));
+    g_uHistU            = 0;
+    g_uHistV            = 0;
+    g_uFirstU           = 0;
+    g_uEndU             = NUM_HORIZONTALS;
+    g_uFirstV           = 0;
+    g_uEndV             = NUM_VERTICALS;
 
     g_uCondition = ACTIVE_DISPLAY; // default
 
-    g_pHeapHead = (u16*)MY_HEAP;
+    g_pHeapStart = (u8*)getImageEnd(); // heap is not part of the image (keeps the .com small)
+    g_pHeapHead  = (u16*)g_pHeapStart;
+    g_nHeapSize  = 0;                  // set by the memory check in main
 
     memset(g_anResultDelays, 0, sizeof(g_anResultDelays));
     memset(g_aoHistogram, 0, sizeof(g_aoHistogram));
@@ -385,12 +529,12 @@ void establishInitialDelays(void)
     for(u8 c = 0; c < NUM_TESTS; c++)
     {
         u8 cCMD = aEXECUTE_CMD[c];
-        for(u8 v = 0; v < NUM_VERTICALS; v++)
+        for(u8 v = g_uFirstV; v < g_uEndV; v++)
         {
             COMBO2BYTES oWH;
             oWH.h = aVERT_LEN[v];
 
-            for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+            for(u8 u = g_uFirstU; u < g_uEndU; u++)
             {
                 oWH.w = aHORZ_LEN[u];
 
@@ -410,9 +554,9 @@ void establishInitialDelays(void)
 u16* myMalloc(u16 nSize)
 {
     u16 nBytes = nSize * sizeof(u16);
-    u16 nUsed  = (u16)((u8*)g_pHeapHead - MY_HEAP);
+    u16 nUsed  = (u16)((u8*)g_pHeapHead - g_pHeapStart);
 
-    if(nBytes > (u16)(MY_HEAP_SIZE - nUsed)) // subtraction, so the u16 math cannot wrap
+    if(nBytes > (u16)(g_nHeapSize - nUsed)) // subtraction, so the u16 math cannot wrap
         return NULL; // out of memory
 
     u16* p = g_pHeapHead;
@@ -504,11 +648,11 @@ bool runTest(void)
     {
         oParams.uCmd = aEXECUTE_CMD[c];
 
-        for(u8 v = 0; v < NUM_VERTICALS; v++)
+        for(u8 v = g_uFirstV; v < g_uEndV; v++)
         {
             oParams.uH = aVERT_LEN[v];
 
-            for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+            for(u8 u = g_uFirstU; u < g_uEndU; u++)
             {
                 oParams.uW = aHORZ_LEN[u];
 
@@ -537,6 +681,304 @@ bool runTest(void)
 }
 
 // ---------------------------------------------------------------------------
+// (s1 - s2) mod 228, for vernier sample counts 0..228 (228 is the same as 0)
+u16 histPhaseDiff(u8 s1, u8 s2)
+{
+    u16 n1 = (s1 >= HIST_SWEEP_LEN) ? (u16)(s1 - HIST_SWEEP_LEN) : s1;
+    u16 n2 = (s2 >= HIST_SWEEP_LEN) ? (u16)(s2 - HIST_SWEEP_LEN) : s2;
+
+    return (n1 >= n2) ? (n1 - n2) : (n1 + HIST_SWEEP_LEN - n2);
+}
+
+// ---------------------------------------------------------------------------
+// Finds the pad that makes one attempt exactly n * 228 + 1 cycles long, and
+// verifies it (see histogram.s). Stores it in p->nPad. Every failed attempt
+// counts as a sync miss; after HIST_CALIB_TRIES the last pad is used.
+bool histCalibrate(HistCombo* p)
+{
+    for(u8 n = 0; n < HIST_CALIB_TRIES; n++)
+    {
+        p->nPad = HIST_PAD_MIN;
+
+        u8 s1 = histPhaseAfterRun(p, 1);
+        u8 s2 = histPhaseAfterRun(p, 2);
+
+        if((s1 != 0xff) && (s2 != 0xff))
+        {
+            u16 nMod = histPhaseDiff(s1, s2); // attempt length mod 228 with pad HIST_PAD_MIN
+
+            p->nPad = HIST_PAD_MIN + ((nMod <= 1) ? (1 - nMod) : (HIST_SWEEP_LEN + 1 - nMod));
+
+            s1 = histPhaseAfterRun(p, 1);
+            s2 = histPhaseAfterRun(p, 2);
+
+            if((s1 != 0xff) && (s2 != 0xff))
+            {
+                if(histPhaseDiff(s1, s2) == 1)
+                    return true;
+
+                g_nMissCalib++; // verification: attempt length not 1 mod 228
+            }
+            else
+                g_nMissPhase++;
+        }
+        else
+            g_nMissPhase++;     // phase measurement after a run failed
+
+        p->nSyncMisses++;
+    }
+
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// One delay value: guard line, calibration, measurement.
+// Returns the number of successes out of p->nTries.
+u16 histMeasure(HistCombo* p, u16 nDelay)
+{
+    p->nDelay = nDelay;
+    p->uGuardLine = (u8)(211 - (nDelay + HIST_OVERHEAD_MAX) / HIST_SWEEP_LEN - 2); // an attempt started on this line ends by line 211
+
+    if(g_bRelock)                       // drifting CPU/VDP clocks: lock before every attempt, no calibration
+        return histMeasureDelayRelock(p);
+
+    histCalibrate(p); // on failure the last pad is used, the misses show in the report
+
+    return histMeasureDelay(p);
+}
+
+// ---------------------------------------------------------------------------
+// Drift between the CPU and VDP clocks over 1024 lines, in CPU cycles
+// (see histDriftPhase). 0 means coupled clocks. HIST_DRIFT_FAILED if no lock.
+s16 histMeasureDrift(HistCombo* p)
+{
+    u8 s1 = histDriftPhase(p, 1);
+    u8 s2 = histDriftPhase(p, 65);     // 64 * 16 = 1024 lines more
+
+    if((s1 == 0xff) || (s2 == 0xff))
+        return HIST_DRIFT_FAILED;
+
+    s16 iDrift = (s16)histPhaseDiff(s1, s2);
+    if(iDrift > HIST_SWEEP_LEN / 2)
+        iDrift -= HIST_SWEEP_LEN;
+
+    return iDrift;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 of -g mode: for each test, walk down from W (phase 1) until no
+// attempt succeeds, then up until all attempts succeed. Stores the CDF counts
+// (successes per delay value) of the span in g_aoHistogram.
+bool runHistTest(void)
+{
+    HistCombo oParams;
+
+    oParams.uW          = aHORZ_LEN[g_uHistU];
+    oParams.uH          = aVERT_LEN[g_uHistV];
+    oParams.nTries      = g_nSweeps * HIST_SWEEP_LEN;
+    oParams.nSyncMisses = 0;
+
+    u16 nAdd = g_bHasT976xEngine ? 1 : 0; // see runTest
+
+    histInit(g_bHasT976xEngine);
+    g_uCmdColor = HIST_CMD_COLOR;
+
+    g_iDrift  = histMeasureDrift(&oParams); // coupled clocks: free-run per frame, else a lock per attempt
+    g_bRelock = (g_iDrift != 0);            // also when the drift test failed (HIST_DRIFT_FAILED)
+
+    if(g_bRelock)
+        histRelaxSyncCheck1(); // drift: sync check 1 gets one cycle of slack, else ~3% of good locks are rejected (see histLock)
+
+    bool bOk = true;
+
+    for(u8 c = 0; c < NUM_TESTS; c++)
+    {
+        oParams.uCmd = aEXECUTE_CMD[c];
+
+        Histogram* pRecord = &g_aoHistogram[c][g_uHistU][g_uHistV];
+        u16 nStart = g_anResultDelays[c][g_uHistU][g_uHistV] - nAdd; // raw W
+
+        // Walk down: scratch[k] = successes for nStart - k
+        u16 nLen   = 0;
+        u16 nDelay = nStart;
+        while(true)
+        {
+            u16 nCount = histMeasure(&oParams, nDelay);
+            if(nCount == HIST_LOCK_FAILED)
+            {
+                bOk = false;
+                break;
+            }
+
+            g_anScratchHistogram[nLen++] = nCount;
+
+            if((nCount == 0) || (nDelay <= HIST_MIN_DELAY))
+                break;
+
+            if(nLen >= SCRATCH_HIST_SIZE)
+            {
+                g_abHistTruncated[c] = true;
+                ERROR_CODE = 5;
+                break;
+            }
+
+            nDelay--;
+        }
+
+        if(!bOk) // no HR lock possible, e.g. wrong T976x detection
+        {
+            ERROR_CODE = 6;
+            memset(g_anScratchHistogram, 0, nLen * sizeof(u16));
+            break;
+        }
+
+        u16 nLowest = nDelay;
+
+        for(u16 a = 0, b = nLen - 1; a < b; a++, b--) // reverse: index 0 = nLowest
+        {
+            u16 nTmp = g_anScratchHistogram[a];
+            g_anScratchHistogram[a] = g_anScratchHistogram[b];
+            g_anScratchHistogram[b] = nTmp;
+        }
+
+        // Walk up until all attempts succeed
+        nDelay = nStart;
+        while(g_anScratchHistogram[nLen - 1] != oParams.nTries)
+        {
+            if(nLen >= SCRATCH_HIST_SIZE)
+            {
+                g_abHistTruncated[c] = true;
+                ERROR_CODE = 5;
+                break;
+            }
+
+            nDelay++;
+            u16 nCount = histMeasure(&oParams, nDelay);
+            if(nCount == HIST_LOCK_FAILED)
+            {
+                bOk = false;
+                break;
+            }
+
+            g_anScratchHistogram[nLen++] = nCount;
+        }
+
+        if(!bOk) // no HR lock possible, e.g. wrong T976x detection
+        {
+            ERROR_CODE = 6;
+            memset(g_anScratchHistogram, 0, nLen * sizeof(u16));
+            break;
+        }
+
+        // The span starts at the first delay value with any success
+        u16 nFirst = 0;
+        while((nFirst < nLen) && (g_anScratchHistogram[nFirst] == 0))
+            nFirst++;
+
+        u16 nSpan = nLen - nFirst;
+
+        if(nSpan == 0)
+            pRecord->nHistogramLength = 0; // printed as "(?)"
+        else
+        {
+            u16* pSpan = myMalloc(nSpan);
+
+            if(pSpan == NULL)
+            {
+                ERROR_CODE = 3;
+                bOk = false;
+            }
+            else
+            {
+                memcpy(pSpan, &g_anScratchHistogram[nFirst], nSpan * sizeof(u16));
+
+                pRecord->panHistogram         = pSpan;
+                pRecord->nHistogramLength     = nSpan;
+                pRecord->nHistogramStartValue = nLowest + nFirst + nAdd;
+            }
+        }
+
+        memset(g_anScratchHistogram, 0, nLen * sizeof(u16));
+
+        if(!bOk)
+            break;
+    }
+
+    g_uCmdColor = 0;
+    g_nTotalSyncMisses = oParams.nSyncMisses;
+
+    return bOk;
+}
+
+// ---------------------------------------------------------------------------
+// -d (hidden diagnostic): lock to the HR edge, wait an exact number of lines
+// counted in CPU cycles, measure where the edge is. With coupled CPU/VDP clocks
+// every wait length gives the same result; otherwise the difference is the drift.
+const u8 const          g_auDriftBlocks[DRIFT_STEPS] = { 1, 17, 65, 129 }; // 16-line blocks: 0, 256, 1024, 2048 lines more than the first
+
+void runDriftTest(void)
+{
+    HistCombo oParams;
+    memset(&oParams, 0, sizeof(oParams));
+
+    histInit(g_bHasT976xEngine);
+
+    for(u8 r = 0; r < DRIFT_RUNS; r++)
+        for(u8 s = 0; s < DRIFT_STEPS; s++)
+            g_auDrift[r][s] = histDriftPhase(&oParams, g_auDriftBlocks[s]);
+
+    g_nTotalSyncMisses = oParams.nSyncMisses;
+}
+
+// ---------------------------------------------------------------------------
+void printDriftReport(DateTime* pDateTime)
+{
+    sprintf(g_auBuffer, g_szTopLine1, g_szVersion, pDateTime->nYear, pDateTime->uMonth + 1, pDateTime->uDay + 1,
+            pDateTime->uHours, pDateTime->uMinutes, pDateTime->uSeconds, g_auSysStr);
+    print(g_auBuffer);
+    sprintf(g_auBuffer, "* VDP detected: %s%s. Lock misses: %u\r\n", aVDP_NAME[g_uVDPModel], g_bHasT976xEngine ? " (T976x)" : "", g_nTotalSyncMisses);
+    print(g_auBuffer);
+    sprintf(g_auBuffer, "* T976x detection: %u loop passes in one frame, %s, threshold %u (fewer: T976x)\r\n\r\n",
+            g_nT976xPasses, getPALRefreshRate() ? "PAL" : "NTSC", getPALRefreshRate() ? T976X_THRESHOLD_PAL : T976X_THRESHOLD_NTSC);
+    print(g_auBuffer);
+
+    print("## DRIFT (CPU clock vs VDP clock)\r\n\r\n");
+    print("| Lines after first | run 1 | run 2 | run 3 | run 4 |\r\n");
+    print("|-------------------|------:|------:|------:|------:|\r\n");
+
+    for(u8 s = 0; s < DRIFT_STEPS; s++)
+    {
+        sprintf(g_auBuffer, "| %-17u |", (u16)(g_auDriftBlocks[s] - 1) * 16);
+        print(g_auBuffer);
+
+        for(u8 r = 0; r < DRIFT_RUNS; r++)
+        {
+            u8 uRef = g_auDrift[r][0];
+            u8 uVal = g_auDrift[r][s];
+
+            if((uRef == 0xff) || (uVal == 0xff))
+                sprintf(g_auBuffer, "  ? |");
+            else if(s == 0)
+                sprintf(g_auBuffer, " (%3u) |", uVal); // raw vernier samples of the reference
+            else
+            {
+                s16 iDrift = (s16)histPhaseDiff(uRef, uVal); // 0..227
+                if(iDrift > HIST_SWEEP_LEN / 2)
+                    iDrift -= HIST_SWEEP_LEN;
+                sprintf(g_auBuffer, " %c%4d |", (iDrift < 0) ? '-' : '+', (iDrift < 0) ? -iDrift : iDrift);
+            }
+            print(g_auBuffer);
+        }
+        print(g_szEmptyLine);
+    }
+
+    print(g_szEmptyLine);
+    print("Drift in CPU cycles, relative to the first row (whose raw vernier counts\r\n");
+    print("are shown in parentheses). 0 everywhere: CPU and VDP clocks are coupled.\r\n");
+    print("Positive: the HR edge comes earlier than the CPU expects.\r\n");
+}
+
+// ---------------------------------------------------------------------------
 void runTests(void)
 {
     switch(g_uCondition)
@@ -561,7 +1003,10 @@ void runTests(void)
     
     establishInitialDelays();
 
-    runTest();
+    bool bOk = runTest();
+
+    if(bOk && g_bHistogramMode)
+        runHistTest();
 
     vdpScreenEnabled(true);
     vdpSpritesEnabled(true);
@@ -569,7 +1014,7 @@ void runTests(void)
 
 // ---------------------------------------------------------------------------
 // Outputs markdown (easy to paste into github or other markdown viewers)
-void printReport(DateTime* pDateTime)
+void printReportTop(DateTime* pDateTime, bool bRealHistogram)
 {
     u8* szT976x = g_bHasT976xEngine ? " (T976x)" : "";
 
@@ -588,33 +1033,79 @@ void printReport(DateTime* pDateTime)
 
     print(g_auBuffer);
 
-    sprintf(g_auBuffer,
-            g_szTopLine2,
-            aVDP_NAME[g_uVDPModel],
-            szT976x,
-            SCREEN_MODE,
-            g_aszConditionNames[g_uCondition],
-            g_uInnerIterations==0?256: g_uInnerIterations,
-            g_uOuterIterations
-           );
+    if(bRealHistogram)
+        sprintf(g_auBuffer,
+                g_szTopLine2g,
+                aVDP_NAME[g_uVDPModel],
+                szT976x,
+                SCREEN_MODE,
+                g_aszConditionNames[g_uCondition],
+                g_uInnerIterations==0?256: g_uInnerIterations,
+                g_uOuterIterations,
+                g_nSweeps
+               );
+    else
+        sprintf(g_auBuffer,
+                g_szTopLine2,
+                aVDP_NAME[g_uVDPModel],
+                szT976x,
+                SCREEN_MODE,
+                g_aszConditionNames[g_uCondition],
+                g_uInnerIterations==0?256: g_uInnerIterations,
+                g_uOuterIterations
+               );
 
     print(g_auBuffer);
 
-    sprintf(g_auBuffer,
-            g_szTopLine2x,
-            g_bVBLANKTiming?g_szSyncMethod1:g_szSyncMethod0,
-            g_szWaitMethod
-           );
-
-    print(g_auBuffer);
-
-    if(g_bHasT976xEngine)
+    if(bRealHistogram)
     {
-        sprintf(g_auBuffer, g_szTopLine3);
+        if(!g_bRelock)
+            print(g_szTopLine2xg);
+        else if(g_iDrift == HIST_DRIFT_FAILED)
+            print(g_szTopLine2xgF);
+        else
+        {
+            sprintf(g_auBuffer, g_szTopLine2xgR, g_iDrift);
+            print(g_auBuffer);
+        }
+    }
+    else
+    {
+        sprintf(g_auBuffer,
+                g_szTopLine2x,
+                g_bVBLANKTiming?g_szSyncMethod1:g_szSyncMethod0,
+                g_szWaitMethod
+               );
+
         print(g_auBuffer);
     }
 
+    if(g_bHasT976xEngine)
+        print(g_szTopLine3);
+
+    if(bRealHistogram)
+    {
+        print(g_szTopLine4_2);
+
+        sprintf(g_auBuffer, g_szTopLine5, (u16)(g_nSweeps * HIST_SWEEP_LEN), g_nSweeps, HIST_SWEEP_LEN); // fits u16, k <= HIST_MAX_SWEEPS
+        print(g_auBuffer);
+
+        if(g_nTotalSyncMisses > 0) // only worth mentioning when something went wrong
+        {
+            sprintf(g_auBuffer, g_szTopLine6, g_nTotalSyncMisses, g_nMissVernier, g_nMissSync1, g_nMissSync2, g_nMissCalib, g_nMissPhase);
+            print(g_auBuffer);
+        }
+    }
+    else
+        print(g_szTopLine4_1);
+
     print(g_szEmptyLine);
+}
+
+// ---------------------------------------------------------------------------
+// Outputs markdown (easy to paste into github or other markdown viewers)
+void printReportBody()
+{
     print(g_szTitle1);
     print(g_szEmptyLine);
 
@@ -786,9 +1277,70 @@ void printReport(DateTime* pDateTime)
     }
 
     sprintf(g_auBuffer, g_szTotalLine, ulTotal);
-    print(g_auBuffer);    
+    print(g_auBuffer);
 
 
+}
+
+// ---------------------------------------------------------------------------
+// Outputs markdown. -g mode: per test the histogram H(d) = F(d) - F(d-1), where
+// F(d) is the number of successes at delay value d (F = 0 below the minimum).
+// One table with counts, one normalized to % of all attempts per delay value.
+void printReportBodyHist(void)
+{
+    print(g_szTitle3);
+    sprintf(g_auBuffer, g_szHistSize, aHORZ_LEN[g_uHistU], aVERT_LEN[g_uHistV]);
+    print(g_auBuffer);
+    print(g_szEmptyLine);
+
+    s32 lTotal = (s32)g_nSweeps * HIST_SWEEP_LEN;
+    u8  szMin[8];
+
+    for(u8 uTable = 0; uTable < 2; uTable++)
+    {
+        sprintf(g_auBuffer, g_szHistTabHeader1, (uTable == 0) ? g_szHistColCount : g_szHistColNorm);
+        print(g_auBuffer);
+        print(g_szHistTabHeader2);
+
+        for(u8 t = 0; t < NUM_TESTS; t++)
+        {
+            Histogram* pHist = &g_aoHistogram[t][g_uHistU][g_uHistV];
+
+            if(pHist->nHistogramLength == 0)
+                strcpy(szMin, "(?)");
+            else
+                sprintf(szMin, "%u", pHist->nHistogramStartValue);
+
+            sprintf(g_auBuffer, g_szHistTabRow, aTEST_NAME[t], szMin);
+            print(g_auBuffer);
+
+            u16 nPrev = 0;
+            for(u16 x = 0; x < pHist->nHistogramLength; x++) // printed one by one: no row length limit
+            {
+                u16 nCdf = pHist->panHistogram[x];
+                s32 lH   = (s32)nCdf - (s32)nPrev; // can be negative on real HW (noise)
+                nPrev    = nCdf;
+
+                if(uTable == 0)
+                    sprintf(g_auBuffer, "%ld ", lH);
+                else
+                {
+                    s32 lHundredths = lH * 10000 / lTotal; // % with 2 decimals, integer math
+                    u32 ulAbs = (lHundredths < 0) ? (u32)(-lHundredths) : (u32)lHundredths;
+                    sprintf(g_auBuffer, "%s%lu.%02lu ", (lHundredths < 0) ? "-" : "", ulAbs / 100, ulAbs % 100);
+                }
+
+                print(g_auBuffer);
+            }
+
+            if(g_abHistTruncated[t])
+                print("...");
+
+            print(g_szEmptyLine);
+        }
+
+        print(g_szEmptyLine);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -796,6 +1348,26 @@ void printHelp(void)
 {
     sprintf(g_auBuffer, g_szHelptext, g_szVersion, g_szWaitMethod, (u8)DEFAULT_OUTER_LOOPS, (u16)(DEFAULT_INNER_LOOPS==0 ? 256 : DEFAULT_INNER_LOOPS));
     print(g_auBuffer);
+}
+
+// ---------------------------------------------------------------------------
+void printHelpHist(void)
+{
+    sprintf(g_auBuffer, g_szHelptextHist, NUM_HORIZONTALS, NUM_VERTICALS, HIST_MAX_SWEEPS);
+    print(g_auBuffer);
+}
+
+// ---------------------------------------------------------------------------
+// Returns the index of iVal in pTable, or 0xff if not found
+u8 findLenIndex(const u8* pTable, u8 uLen, s16 iVal)
+{
+    for(u8 n = 0; n < uLen; n++)
+    {
+        if((s16)pTable[n] == iVal)
+            return n;
+    }
+
+    return 0xff;
 }
 
 // ---------------------------------------------------------------------------
@@ -822,7 +1394,10 @@ u8 commandLineParameters(char** argv, u8 argc)
 
             if(strcmp(argv[n], "-h") == 0 || strcmp(argv[n], "--help") == 0)
             {
-                printHelp();
+                if((n + 1 < argc) && (strcmp(argv[n+1], "-g") == 0))
+                    printHelpHist();
+                else
+                    printHelp();
                 return 0;
             }
             else if(strcmp(argv[n], "-1") == 0)
@@ -837,11 +1412,58 @@ u8 commandLineParameters(char** argv, u8 argc)
             {
                 g_uCondition = 2;
             }
+            else if(strcmp(argv[n], "-d") == 0) // hidden diagnostic, not in the help
+            {
+                g_bDriftMode = true;
+            }
             else if(strcmp(argv[n], "-t") == 0)
             {
                 g_bVBLANKTiming = true;
             }
-            
+            else if(strcmp(argv[n], "-g") == 0)
+            {
+                if(n + 3 >= argc)
+                {
+                    print("ERROR:Missing value(s) for -g");
+                    return 1;
+                }
+
+                iVal = atoi(argv[++n]);
+                u8 uU = findLenIndex(aHORZ_LEN, NUM_HORIZONTALS, iVal);
+                if((iVal < 1) || (iVal > NUM_HORIZONTALS) || (uU == 0xff))
+                {
+                    sprintf(g_auBuffer, "ERROR:x for -g must be in range 1-%d", NUM_HORIZONTALS);
+                    print(g_auBuffer);
+                    return 1;
+                }
+
+                iVal = atoi(argv[++n]);
+                u8 uV = findLenIndex(aVERT_LEN, NUM_VERTICALS, iVal);
+                if((iVal < 1) || (iVal > NUM_VERTICALS) || (uV == 0xff))
+                {
+                    sprintf(g_auBuffer, "ERROR:y for -g must be in range 1-%d", NUM_VERTICALS);
+                    print(g_auBuffer);
+                    return 1;
+                }
+
+                iVal = atoi(argv[++n]);
+                if((iVal < 1) || (iVal > HIST_MAX_SWEEPS))
+                {
+                    sprintf(g_auBuffer, "ERROR:k for -g must be in range 1-%d", HIST_MAX_SWEEPS);
+                    print(g_auBuffer);
+                    return 1;
+                }
+                g_nSweeps = (u16)iVal;
+
+                g_bHistogramMode = true;
+                g_uHistU  = uU;
+                g_uHistV  = uV;
+                g_uFirstU = uU;
+                g_uEndU   = uU + 1;
+                g_uFirstV = uV;
+                g_uEndV   = uV + 1;
+            }
+
             else if(strcmp(argv[n], "-i") == 0)
             {
                 if(++n >= argc)
@@ -887,6 +1509,12 @@ u8 commandLineParameters(char** argv, u8 argc)
                 strcpy(g_auSysStr, argv[n]);
             }
         }
+
+        if(g_bHistogramMode && g_bVBLANKTiming) // the histogram needs exact timing with interrupts off
+        {
+            print("ERROR:-t can't be used with -g");
+            return 1;
+        }
     }
 
     return 2;
@@ -911,6 +1539,17 @@ u8 main(char** argv, u8 argc)
         if(ret < 2)
             return ret;
     }
+
+    // ------------------------------------
+    // Enough memory between the image and the stack? The rest is the heap.
+    u16 nTop = *(u16*)HIMEM;  // highest usable address (stack lives below it)
+    u16 nEnd = getImageEnd();
+    if((nTop < nEnd) || ((u16)(nTop - nEnd) < STACK_RESERVE + HEAP_MIN_SIZE))
+    {
+        print("ERROR:Not enough memory");
+        return 1;
+    }
+    g_nHeapSize = (u16)(nTop - nEnd - STACK_RESERVE);
 
     // ------------------------------------
     // Initialize
@@ -946,7 +1585,21 @@ u8 main(char** argv, u8 argc)
     vdpEnableLineInterruptNI(false); // to be sure
     enableInterrupt();
 
-    detectT976xEngine(); // only to be called i z80 mode and no line interrupts
+    bool bTimingOk = detectT976xEngine(); // only to be called i z80 mode and no line interrupts
+
+    if(!bTimingOk && !g_bDriftMode) // -d still runs: it shows the count
+    {
+        if(sOrgCPU != -1)
+            changeCPU(sOrgCPU);
+
+        if(bRestoreTurbo)
+            enableTurbo(true);
+
+        sprintf(g_auBuffer, "ERROR:Unexpected CPU timing (cartridge wait states?) %u passes/frame", g_nT976xPasses);
+        print(g_auBuffer);
+        return 1;
+    }
+
     vdpSet212Lines(true); // due to using line interrupts, we need as many lines as possible
 
     bool hasScreenOutput = userOutputsToScreen();
@@ -957,7 +1610,10 @@ u8 main(char** argv, u8 argc)
     // ---------------------------------------------
     // READY! Set conditions for tests and run tests
     getTime(&oTimestamp0);
-    runTests();
+    if(g_bDriftMode)
+        runDriftTest();
+    else
+        runTests();
     getTime(&oTimestamp1);
 
     // ----------------------------------
@@ -982,7 +1638,17 @@ u8 main(char** argv, u8 argc)
 
     // ----------------------------------
     // Show summary
-    printReport(&oTimestamp0);
+    if(g_bDriftMode)
+        printDriftReport(&oTimestamp0);
+    else
+    {
+        printReportTop(&oTimestamp0, g_bHistogramMode);
+
+        if(g_bHistogramMode)
+            printReportBodyHist();
+        else
+            printReportBody();
+    }
 
     // ----------------------------------
     // Show duration of test and print
