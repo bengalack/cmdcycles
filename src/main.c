@@ -225,7 +225,7 @@ extern void     histRelaxSyncCheck1(void);                   // relock mode: syn
 
 // Consts --------------------------------------------------------------------
 //
-const u8                g_szVersion[]           = "0.95";
+const u8                g_szVersion[]           = "0.99";
 const u8                g_szErrorMSX[]          = "MSX2 or higher is required";
 
 const u8                g_szTopLine1[]          = "cmdcycle v%s - %04hu-%02d-%02d %02d:%02d:%02d - %s  \r\n"; // markdown needs two spaces at end of line to force line break
@@ -237,7 +237,7 @@ const u8                g_szTopLine4_2[]        = "* Histogram type: True histog
 const u8                g_szTopLine4_3[]        = "* Method: phase sweep, k:%u sweeps of 228 per probe\r\n";
 const u8                g_szTopLine4_4[]        = "* %u is the lowest delay value measured: %u means %u or less\r\n";
 const u8                g_szTopLine2g[]         = "* VDP detected: %s%s, screen %d, mode: %s. (-i:%d -o:%d k:%u)\r\n";
-const u8                g_szTopLine2n[]         = "* VDP detected: %s%s, screen %d, mode: %s. (k:%u)\r\n";
+const u8                g_szTopLine2n[]         = "* VDP detected: %s%s, screen %d, mode: %s.\r\n"; // k: see the method line
 const u8                g_szTopLine2xg[]        = "* Sync method: Line interrupts + HR vernier lock per frame\r\n";
 const u8                g_szTopLine2xgR[]       = "* Sync method: Line interrupts + HR vernier lock per attempt (CPU/VDP clock drift: %d cycles per 1024 lines)\r\n";
 const u8                g_szTopLine2xgF[]       = "* Sync method: Line interrupts + HR vernier lock per attempt (CPU/VDP clock drift test failed)\r\n";
@@ -431,6 +431,15 @@ bool                    g_bVBLANKTiming;
 bool                    g_bHistogramMode;       // -g x y
 bool                    g_bSweepMode;           // -n k: cycle table with the sweep method
 bool                    g_bForceRelock;         // -r (diagnostic, with -n/-g): lock per attempt even when the clocks don't drift
+bool                    g_bVerifyCounts;        // -v (diagnostic, with -n): count the successes at each minimum (all attempts)
+u16                     g_nMinCount;            // -v: successes at the minimum of the last cell
+u8                      g_uHitIdx;              // histogram.s: index in its frame of the attempt that ended a measurement (0xFF: relock path)
+u8                      g_uFrameAttempts;       // histogram.s: attempts in the last full frame
+u8                      g_uMinHitIdx;           // -v: g_uHitIdx of the success that set the minimum of the last cell
+u8                      g_uMinFrameAttempts;    // -v: g_uFrameAttempts at that success
+u8                      g_uGuardExtra;          // -m n (diagnostic): guard line n lines higher
+u8                      g_uOnlyTest;            // -x c (diagnostic, with -n): only test c (1..6), 0: all
+u8                      g_uVrMask;              // histogram.s: 0x40 = an attempt that ends outside the active area (VR) is discarded; 0 without display
 bool                    g_bDriftMode;           // -d (hidden diagnostic): CPU/VDP clock drift
 bool                    g_bRelock;              // -g: CPU/VDP clocks drift, so lock before every attempt
 u16                     g_nT976xPasses;         // T976x detection: loop passes measured in one frame (-d report)
@@ -463,6 +472,8 @@ u8                      g_auSysStr[MAX_SYS_LEN];// name of system
 
 u16                     g_anScratchHistogram[SCRATCH_HIST_SIZE];                        // scratch for sampling
 u16                     g_anResultDelays[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];    // Initial and results delays
+u16                     g_anMinCounts[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];       // -v: successes at the minimum, of k * 228
+u16                     g_anMinHit[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];          // -v: hit index * 256 + attempts per frame
 Histogram               g_aoHistogram[NUM_TESTS][NUM_HORIZONTALS][NUM_VERTICALS];       // Condensed and tidy
 
 // ---------------------------------------------------------------------------
@@ -509,6 +520,9 @@ void initVarsAndRig(void)
     g_bHistogramMode    = false;
     g_bSweepMode        = false;
     g_bForceRelock      = false;
+    g_bVerifyCounts     = false;
+    g_uGuardExtra       = 0;
+    g_uOnlyTest         = 0;
     g_bDriftMode        = false;
     g_bRelock           = false;
     g_iDrift            = 0;
@@ -763,7 +777,7 @@ bool histCalibrate(HistCombo* p)
 u16 histMeasure(HistCombo* p, u16 nDelay)
 {
     p->nDelay = nDelay;
-    p->uGuardLine = (u8)(211 - (nDelay + HIST_OVERHEAD_MAX) / HIST_SWEEP_LEN - 2); // an attempt started on this line ends by line 211
+    p->uGuardLine = (u8)(211 - (nDelay + HIST_OVERHEAD_MAX) / HIST_SWEEP_LEN - 2 - g_uGuardExtra); // an attempt started on this line ends by line 211
 
     if(g_bRelock)                       // drifting CPU/VDP clocks: lock before every attempt, no calibration
         return histMeasureDelayRelock(p);
@@ -812,11 +826,13 @@ u16 sweepPad(u16 nLmod0, u16 nD0, u16 nD)
 
 // ---------------------------------------------------------------------------
 // -n: does at least one of the k * 228 attempts at nDelay succeed?
-// Returns 1, 0, or HIST_LOCK_FAILED. Stops at the first success.
+// Returns the successes (0 or 1 with uStopOnSuccess), or HIST_LOCK_FAILED.
 u16 sweepProbe(HistCombo* p, u16 nDelay, u16 nLmod0, u16 nD0)
 {
     p->nDelay = nDelay;
-    p->uGuardLine = (u8)(211 - (nDelay + HIST_OVERHEAD_MAX) / HIST_SWEEP_LEN - 2); // an attempt started on this line ends by line 211
+    p->uGuardLine = (u8)(211 - (nDelay + HIST_OVERHEAD_MAX) / HIST_SWEEP_LEN - 2 - g_uGuardExtra); // an attempt started on this line ends by line 211
+
+    g_uHitIdx = 0xFF;                       // stays so on the relock path (-v)
 
     u16 nCount;
     if(g_bRelock)                           // drifting clocks: a lock per attempt, no calibration
@@ -831,10 +847,7 @@ u16 sweepProbe(HistCombo* p, u16 nDelay, u16 nLmod0, u16 nD0)
         nCount = histMeasureDelay(p);
     }
 
-    if(nCount == HIST_LOCK_FAILED)
-        return HIST_LOCK_FAILED;
-
-    return (nCount > 0) ? 1 : 0;
+    return nCount;                          // successes (stops at 1 with uStopOnSuccess), or HIST_LOCK_FAILED
 }
 
 // ---------------------------------------------------------------------------
@@ -842,6 +855,13 @@ u16 sweepProbe(HistCombo* p, u16 nDelay, u16 nLmod0, u16 nD0)
 // cell in *p (binary search, see the spec). nInit: initial delay of the cell
 // (from establishInitialDelays, includes LEEWAY). Returns HIST_LOCK_FAILED if
 // no lock was possible.
+void sweepNoteHit(void)                     // -v: where in its frame was the success that sets the minimum?
+{
+    g_uMinHitIdx        = g_uHitIdx;
+    g_uMinFrameAttempts = g_uFrameAttempts;
+}
+
+// ---------------------------------------------------------------------------
 u16 sweepFindMin(HistCombo* p, u16 nInit)
 {
     u16 nLmod0 = 0;
@@ -863,7 +883,10 @@ u16 sweepFindMin(HistCombo* p, u16 nInit)
         if(nRes == HIST_LOCK_FAILED)
             return HIST_LOCK_FAILED;
         if(nRes)
+        {
+            sweepNoteHit();
             break;
+        }
         nHi += LEEWAY;
     }
 
@@ -874,8 +897,13 @@ u16 sweepFindMin(HistCombo* p, u16 nInit)
             return HIST_LOCK_FAILED;
         if(!nRes)
             break;
-        if(nLo == HIST_MIN_DELAY)
-            return HIST_MIN_DELAY;          // floor reached and it still succeeds
+        sweepNoteHit();
+        if(nLo == HIST_MIN_DELAY)           // floor reached and it still succeeds
+        {
+            nHi = HIST_MIN_DELAY;
+            nLo = HIST_MIN_DELAY - 1;       // skips the search below
+            break;
+        }
         nHi = nLo;
         nLo = (nLo > 2 * INITIAL_LOOP_CYCLES + HIST_MIN_DELAY) ? (nLo - 2 * INITIAL_LOOP_CYCLES) : HIST_MIN_DELAY;
     }
@@ -887,9 +915,22 @@ u16 sweepFindMin(HistCombo* p, u16 nInit)
         if(nRes == HIST_LOCK_FAILED)
             return HIST_LOCK_FAILED;
         if(nRes)
+        {
             nHi = nMid;
+            sweepNoteHit();
+        }
         else
             nLo = nMid;
+    }
+
+    if(g_bVerifyCounts)                     // -v (diagnostic): all attempts at the minimum, how many succeed?
+    {
+        p->uStopOnSuccess = 0;
+        nRes = sweepProbe(p, nHi, nLmod0, nInit);
+        p->uStopOnSuccess = 0xFF;
+        if(nRes == HIST_LOCK_FAILED)
+            return HIST_LOCK_FAILED;
+        g_nMinCount = nRes;
     }
 
     return nHi;
@@ -909,6 +950,7 @@ bool runSweepTest(void)
     u16 nAdd = g_bHasT976xEngine ? 1 : 0;   // see runTest
 
     histInit(g_bHasT976xEngine);
+    g_uVrMask = (g_uCondition == NO_DISPLAY) ? 0 : 0x40; // see hfRun: VR catches a lost FH (no faster border without display)
     g_uCmdColor = HIST_CMD_COLOR;
 
     g_iDrift  = histMeasureDrift(&oParams); // coupled clocks: free-run per frame, else a lock per attempt
@@ -921,6 +963,9 @@ bool runSweepTest(void)
 
     for(u8 c = 0; bOk && (c < NUM_TESTS); c++)
     {
+        if(g_uOnlyTest && (c != g_uOnlyTest - 1))
+            continue;               // -x c (diagnostic)
+
         oParams.uCmd = aEXECUTE_CMD[c];
 
         for(u8 v = 0; bOk && (v < NUM_VERTICALS); v++)
@@ -938,7 +983,11 @@ bool runSweepTest(void)
                     bOk = false;
                 }
                 else
+                {
                     g_anResultDelays[c][u][v] = nMin + nAdd;
+                    g_anMinCounts[c][u][v]    = g_nMinCount;
+                    g_anMinHit[c][u][v]       = ((u16)g_uMinHitIdx << 8) | g_uMinFrameAttempts;
+                }
             }
         }
     }
@@ -966,6 +1015,7 @@ bool runHistTest(void)
     u16 nAdd = g_bHasT976xEngine ? 1 : 0; // see runTest
 
     histInit(g_bHasT976xEngine);
+    g_uVrMask = (g_uCondition == NO_DISPLAY) ? 0 : 0x40; // see hfRun: VR catches a lost FH (no faster border without display)
     g_uCmdColor = HIST_CMD_COLOR;
 
     g_iDrift  = histMeasureDrift(&oParams); // coupled clocks: free-run per frame, else a lock per attempt
@@ -1242,8 +1292,7 @@ void printReportTop(DateTime* pDateTime, bool bRealHistogram)
                 aVDP_NAME[g_uVDPModel],
                 szT976x,
                 SCREEN_MODE,
-                g_aszConditionNames[g_uCondition],
-                g_nSweeps
+                g_aszConditionNames[g_uCondition]
                );
     else
         sprintf(g_auBuffer,
@@ -1499,6 +1548,68 @@ void printReportBody(bool bWithFakeHistogram)
 }
 
 // ---------------------------------------------------------------------------
+// -v (diagnostic, with -n): per cell, how many of the k * 228 attempts succeed
+// at the minimum found. A real minimum repeats in every sweep (>= k), a false
+// success shows as a count of about 1.
+void printMinCounts(void)
+{
+    print(g_szEmptyLine);
+    sprintf(g_auBuffer, "## SUCCESSES AT MINIMUM (-v, of %u attempts)\r\n", (u16)(g_nSweeps * HIST_SWEEP_LEN));
+    print(g_auBuffer);
+    print(g_szEmptyLine);
+
+    for(u8 t = 0; t < NUM_TESTS; t++)
+    {
+        sprintf(g_auBuffer, g_szHeader1, aTEST_NAME[t],
+                aHORZ_LEN[0], aHORZ_LEN[1], aHORZ_LEN[2], aHORZ_LEN[3],
+                aHORZ_LEN[4], aHORZ_LEN[5], aHORZ_LEN[6], aHORZ_LEN[7]);
+        print(g_auBuffer);
+        print(g_szHeader2);
+
+        for(u8 v = 0; v < NUM_VERTICALS; v++)
+        {
+            sprintf(g_auBuffer, g_szResultLine, aVERT_LEN[v],
+                    g_anMinCounts[t][0][v], g_anMinCounts[t][1][v], g_anMinCounts[t][2][v], g_anMinCounts[t][3][v],
+                    g_anMinCounts[t][4][v], g_anMinCounts[t][5][v], g_anMinCounts[t][6][v], g_anMinCounts[t][7][v]);
+            print(g_auBuffer);
+        }
+
+        print(g_szEmptyLine);
+    }
+
+    // Where in its frame was the success that set the minimum: "index/attempts per frame"
+    // (index 0 = first attempt after the lock; "-" = lock per attempt, no frames)
+    print("## DECIDING SUCCESS: ATTEMPT IN FRAME (-v, index/attempts per frame)\r\n");
+    print(g_szEmptyLine);
+
+    for(u8 t = 0; t < NUM_TESTS; t++)
+    {
+        sprintf(g_auBuffer, g_szHeader1, aTEST_NAME[t],
+                aHORZ_LEN[0], aHORZ_LEN[1], aHORZ_LEN[2], aHORZ_LEN[3],
+                aHORZ_LEN[4], aHORZ_LEN[5], aHORZ_LEN[6], aHORZ_LEN[7]);
+        print(g_auBuffer);
+        print(g_szHeader2);
+
+        for(u8 v = 0; v < NUM_VERTICALS; v++)
+        {
+            u8* p = g_auBuffer + sprintf(g_auBuffer, "| %d                  |", aVERT_LEN[v]);
+            for(u8 u = 0; u < NUM_HORIZONTALS; u++)
+            {
+                u16 n = g_anMinHit[t][u][v];
+                if((n >> 8) == 0xFF)
+                    p += sprintf(p, "    - |");
+                else
+                    p += sprintf(p, " %u/%u |", n >> 8, n & 0xFF);
+            }
+            sprintf(p, "\r\n");
+            print(g_auBuffer);
+        }
+
+        print(g_szEmptyLine);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Outputs markdown. -g mode: per test the histogram H(d) = F(d) - F(d-1), where
 // F(d) is the number of successes at delay value d (F = 0 below the minimum).
 // One table with counts, one normalized to % of all attempts per delay value.
@@ -1647,6 +1758,18 @@ u8 commandLineParameters(char** argv, u8 argc)
             else if(strcmp(argv[n], "-r") == 0) // hidden diagnostic: force the turbo R path (lock per attempt), not in the help
             {
                 g_bForceRelock = true;
+            }
+            else if(strcmp(argv[n], "-v") == 0) // hidden diagnostic for -n: success counts at the minima, not in the help
+            {
+                g_bVerifyCounts = true;
+            }
+            else if((strcmp(argv[n], "-m") == 0) && (n + 1 < argc)) // hidden diagnostic: guard line n lines higher
+            {
+                g_uGuardExtra = (u8)atoi(argv[++n]);
+            }
+            else if((strcmp(argv[n], "-x") == 0) && (n + 1 < argc)) // hidden diagnostic for -n: only test c (1..6)
+            {
+                g_uOnlyTest = (u8)atoi(argv[++n]);
             }
             else if(strcmp(argv[n], "-t") == 0)
             {
@@ -1919,6 +2042,9 @@ u8 main(char** argv, u8 argc)
             printReportBodyHist();
         else
             printReportBody(!g_bSweepMode);
+
+            if(g_bSweepMode && g_bVerifyCounts)
+                printMinCounts();
     }
 
     // ----------------------------------

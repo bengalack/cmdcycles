@@ -400,8 +400,15 @@ hist_load_regs:
 ;           BC' - remaining attempts (> 0), DE' - 0, HL' - successes
 ;           (nHfDelay), (nHfPad), (uFhMask), S#2 selected, DI
 ; OUT:      carry clear: all attempts done (or first success with uStopMask)
-;           carry set: guard line reached (FH), IYL = attempts this frame
+;           carry set: guard line reached (FH), IYL = attempts this frame. The
+;           attempt during which FH was set is NOT counted (see below).
 ; MODIFIES: AF, BC, DE, HL, IYL, BC', HL'
+;
+; Real V9938 hardware (not openMSX): an S#2 read that coincides with the VDP
+; setting FH (line interrupt) can return CE = 0 while the command still runs.
+; So the guard-line check comes before the count: an attempt during which FH
+; was set is discarded, and its start position is tried again as the first
+; attempt of the next frame (IYL and BC' are not advanced for it).
 hfRun::
 hf_try:
     ld      d,ixh                   ; W
@@ -412,13 +419,29 @@ hf_try:
     ld      c,iyh
     call    dispatch_vdp_test       ; OUT, exactly d cycles, IN -> A = S#2
     ld      b,a
+    ld      d,a                     ; D = S#2 (VR in bit 6), main DE is scratch here
     xor     a
     vdpWriteReg 46                  ; STOP right after the measurement
     ld      a,b
     rra                             ; carry = busy (CE)
     ccf                             ; carry = done
-    sbc     a,a                     ; A = 0xFF if done, else 0 (carry unchanged)
-    ld      e,a                     ; E = done mask (main DE is scratch here)
+    sbc     a,a                     ; A = 0xFF if done, else 0
+    ld      e,a                     ; E = done mask
+    ld      a,(uVrMask)             ; outside the active area (VR) at the IN? Then FH was lost
+    and     d                       ; (a read of S#1 just when FH is set can clear it unseen):
+    jp      nz,hf_frame_end         ; discard the attempt and end the frame
+    ld      a,#1
+    vdpWriteReg 15                  ; S#1
+    nop                         ; VDP I/O: >= 15 cycles between accesses (OUT -> IN is 12 without this)
+    in      a,(VDPPORT1)            ; FH in bit 0 (reading clears it)
+    ld      b,a
+    ld      a,#2
+    vdpWriteReg 15                  ; S#2
+    ld      a,(uFhMask)
+    and     b                       ; FH, masked (0 during calibration)
+    jp      nz,hf_frame_end         ; guard line reached during this attempt: discard it
+    ld      a,e
+    add     a,a                     ; carry = done
     exx
     adc     hl,de                   ; successes += done (DE' = 0), no branch
     dec     bc                      ; remaining attempts
@@ -430,16 +453,6 @@ hf_try:
     and     e
     jp      nz,hf_all_done          ; done and stop wanted (constant cost when not taken)
     inc     iyl                     ; attempts this frame
-    ld      a,#1
-    vdpWriteReg 15                  ; S#1
-    nop                         ; VDP I/O: >= 15 cycles between accesses (OUT -> IN is 12 without this)
-    in      a,(VDPPORT1)            ; FH in bit 0 (reading clears it)
-    ld      b,a
-    ld      a,#2
-    vdpWriteReg 15                  ; S#2
-    ld      a,(uFhMask)
-    and     b                       ; FH, masked (0 during calibration)
-    jp      nz,hf_frame_end
     ld      hl,(nHfPad)
     call    waitExact               ; pad: makes the period n * 228 + 1
     jp      hf_try
@@ -513,6 +526,7 @@ _histPhaseAfterRun::
 
     xor     a
     ld      (uFhMask),a             ; ignore the guard line
+    ld      (uVrMask),a             ; and VR (calibration runs right after the lock)
     ld      (uStopMask),a           ; calibration runs all its attempts (A = 0)
 
     ld      b,d
@@ -571,6 +585,8 @@ _histMeasureDelay::
     ld      (uHfOffset),a
     inc     a
     ld      (uFhMask),a             ; honour the guard line
+    ld      a,(_g_uVrMask)
+    ld      (uVrMask),a             ; and VR (lost FH): 0x40, or 0 without display
     ld      a,12(ix)
     ld      (uStopMask),a           ; HistCombo.uStopOnSuccess
 
@@ -628,6 +644,8 @@ hm_wait_line0:
     call    hfRun
     jp      nc,hm_done
 
+    ld      a,iyl
+    ld      (_g_uFrameAttempts),a   ; -v diagnostic: attempts in a full frame (not timed)
     ld      a,(uHfOffset)           ; next frame continues the sweep: i = (i + IYL) mod 228
     add     a,iyl
     jr      c,hm_wrap_carry
@@ -642,6 +660,8 @@ hm_store:
     jp      hm_frame
 
 hm_done:
+    ld      a,iyl
+    ld      (_g_uHitIdx),a          ; -v diagnostic: index in its frame of the last attempt (the success, with uStopMask)
     call    _cleanupLineInterruptsNI
     ei
     exx                             ; HL = successes
@@ -676,7 +696,10 @@ _histMeasureDelayRelock::
 
     xor     a
     ld      (uHfOffset),a           ; position i of the next attempt
-    ld      (uFhMask),a             ; hfRun runs one attempt and exits before its FH check
+    inc     a
+    ld      (uFhMask),a             ; honour the guard line: hfRun discards an attempt during which FH was set
+    ld      a,(_g_uVrMask)
+    ld      (uVrMask),a             ; and VR (lost FH): 0x40, or 0 without display
     ld      a,12(ix)
     ld      (uStopMask),a           ; HistCombo.uStopOnSuccess
 
@@ -736,6 +759,7 @@ rm_attempt:
     exx
     ld      iyl,#0
     call    hfRun                   ; one attempt, exits through hf_all_done
+    jp      c,rm_frame              ; guard line reached during it: discarded, same position next frame
 
     ld      a,(uStopMask)           ; stop at the first success? (not timed)
     or      a
@@ -763,7 +787,7 @@ rm_pos_ok:
     jp      z,rm_done
 
     ld      ix,(pHistParams)        ; for histLock (misses)
-    ld      a,#1                    ; guard line passed during this attempt?
+    ld      a,#1                    ; guard line passed since hfRun's check?
     vdpWriteReg 15                  ; S#1
     nop                             ; VDP I/O: >= 15 cycles between accesses (OUT -> IN is 12 without this)
     in      a,(VDPPORT1)            ; FH (reading clears it)
@@ -861,6 +885,8 @@ uFhMask:
     .db 0                           ; 1: stop at the guard line, 0: ignore it (calibration)
 uStopMask:
     .db 0                           ; 0xFF: a measurement ends at the first success (HistCombo.uStopOnSuccess)
+uVrMask:
+    .db 0                           ; 0x40: an attempt whose IN sees VR (S#2 bit 6) ends the frame, 0: ignored (calibration)
 uHfOffset:
     .db 0                           ; start position of the next frame's first attempt (0..227)
 uVcCap:
