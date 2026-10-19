@@ -449,7 +449,7 @@ hf_try:
     or      c
     exx
     jp      z,hf_all_done
-    ld      a,(uStopMask)           ; 0xFF: stop at the first success (-n probes)
+    ld      a,(uStopMask)           ; 0xFF: stop at the first success (cycle table probes)
     and     e
     jp      nz,hf_all_done          ; done and stop wanted (constant cost when not taken)
     inc     iyl                     ; attempts this frame

@@ -1,1 +1,1 @@
-cmdcycle Panasonic_FS-A1ST > FS-A1ST.md 
+cmdcycle Sony_HB-F1XD > HB-F1XD.md 

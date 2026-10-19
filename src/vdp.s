@@ -216,7 +216,6 @@ setup_done2:
 ; A line has thickness 0, so we need to decrease both horz and vert extent by 1.
 ; This routine has 16 outs (12 for lines), ie. +16 (12 for lines) outs on some VDPs
 ; MODIFIES: AF, BC, DE, HL
-; void setVDPCmdParamsNI(u8 w, u8 h); A, L 
 ; void setVDPCmdParamsNI(u8 uCmd, u16 oHW); // oWH: COMBO2BYTES.  A, DE 
 
 ; Starts with a STOP (R#46 = 0). Colour (R#44) comes from g_uCmdColor (0 = random).

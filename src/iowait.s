@@ -12,8 +12,9 @@
 .include "macros_constants.inc"
 
 ; ----------------------------------------------------------------------------
-; Counts loop passes in exactly one frame: 35 cycles per pass, 36 on T976x
-; (+1 on the VDP IN). NTSC: ~1707 / ~1659 passes, PAL: ~2039 / ~1982.
+; Counts loop passes in exactly one frame: 32 cycles per pass, 33 on T976x
+; (+1 on the VDP IN). NTSC: ~1867 / ~1810 passes, PAL: ~2230 / ~2162.
+; IN F,(C) sets S from bit 7 (the VBLANK flag), so JP P loops until it is set.
 ; Leaves S#0 selected and line interrupts off.
 ; OUT:      DE - loop passes in one frame
 ; MODIFIES: AF, BC, DE
@@ -22,23 +23,19 @@ _measureVDPPollsInOneFrame::
     di
     xor     a
     vdpWriteReg 15                  ; S#0
-    nop                             ; VDP I/O: >= 15 cycles between accesses
-    in      a,(VDPPORT1)            ; clear a VBLANK flag that is already pending
-    nop
+    ld      c,#VDPPORT1
+    .db     0xED,0x70               ; in f,(c) (sdasz80 has no mnemonic): clear a VBLANK flag already pending (>= 15 cycles after the OUT)
+    nop                             ; VDP I/O: >= 15 cycles between accesses (14 without this)
 mp_sync:
-    in      a,(VDPPORT1)
-    rla                             ; VBLANK flag (S#0 bit 7) -> carry
-    jp      nc,mp_sync              ; frame start (reading clears the flag)
+    .db     0xED,0x70               ; in f,(c)
+    jp      p,mp_sync               ; frame start (reading clears the flag)
 
-    ld      bc,#0
-mp_count:                           ; 35 cycles per pass (36 on T976x)
-    in      a,(VDPPORT1)            ; 12 (13)
-    inc     bc                      ;  7
-    rla                             ;  5
-    jp      nc,mp_count             ; 11
+    ld      de,#0
+mp_count:                           ; 32 cycles per pass (33 on T976x)
+    .db     0xED,0x70               ; 14 (15)  in f,(c): ED prefix = 2 M1 waits
+    inc     de                      ;  7
+    jp      p,mp_count              ; 11       S = VBLANK flag
 
-    ld      e,c
-    ld      d,b                     ; return in DE
     xor     a
     call    _vdpEnableLineInterruptNI ; line interrupts off (vdp.s, modifies A only)
     ei
