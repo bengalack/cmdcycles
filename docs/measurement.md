@@ -43,7 +43,7 @@ those values are calibrated one by one.
 
 The lowest delay is 20 cycles. A 20 in the table means 20 or less.
 
-## Histogram (`-g x y`)
+## Histogram (`-g W H`)
 
 For one size, every *d* from below the minimum up to where all attempts succeed is
 measured with all k × 228 attempts. The number of successes per *d* rises from 0 to

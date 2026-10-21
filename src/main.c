@@ -263,7 +263,7 @@ const u8                g_szHelptext[]          = "Usage:cmdcycle [opt] [sys]\r\
                                                   "Options (opt):\r\n"
                                                   " -h Show this help message\r\n"
                                                   " -k n Sweeps, 1..%d (1)\r\n"
-                                                  " -g x y Histogram (-h -g)\r\n"
+                                                  " -g W H Histogram (-h -g)\r\n"
                                                   " -1 Mode: normal (default)\r\n"
                                                   " -2 Mode: no sprites\r\n"
                                                   " -3 Mode: no screen\r\n"
@@ -272,14 +272,14 @@ const u8                g_szHelptext[]          = "Usage:cmdcycle [opt] [sys]\r\
                                                   "sys: Show sys name in report";
 
                                                 //"                             " // 29 chars (turbo r)
-const u8                g_szHelptextHist[]      = "Usage:cmdcycle -g x y [sys]\r\n"
+const u8                g_szHelptextHist[]      = "Usage:cmdcycle -g W H [sys]\r\n"
                                                   "\r\n"
                                                   "Histogram of the duration of\r\n"
-                                                  "one command size (x*y) for\r\n"
+                                                  "one command size (W*H) for\r\n"
                                                   "all tests.\r\n"
                                                   "\r\n"
-                                                  "x: 1..%d (width)\r\n"
-                                                  "y: 1..%d (height)\r\n"
+                                                  "W: 1..%d (width)\r\n"
+                                                  "H: 1..%d (height)\r\n"
                                                   "\r\n"
                                                   "-k -1 -2 -3 -r apply as\r\n"
                                                   "usual.";
@@ -1429,7 +1429,7 @@ u8 commandLineParameters(char** argv, u8 argc)
                 u8 uU = findLenIndex(aHORZ_LEN, NUM_HORIZONTALS, iVal);
                 if((iVal < 1) || (iVal > NUM_HORIZONTALS) || (uU == 0xff))
                 {
-                    sprintf(g_auBuffer, "ERROR:x for -g must be in range 1-%d", NUM_HORIZONTALS);
+                    sprintf(g_auBuffer, "ERROR:W for -g must be in range 1-%d", NUM_HORIZONTALS);
                     print(g_auBuffer);
                     return 1;
                 }
@@ -1438,7 +1438,7 @@ u8 commandLineParameters(char** argv, u8 argc)
                 u8 uV = findLenIndex(aVERT_LEN, NUM_VERTICALS, iVal);
                 if((iVal < 1) || (iVal > NUM_VERTICALS) || (uV == 0xff))
                 {
-                    sprintf(g_auBuffer, "ERROR:y for -g must be in range 1-%d", NUM_VERTICALS);
+                    sprintf(g_auBuffer, "ERROR:H for -g must be in range 1-%d", NUM_VERTICALS);
                     print(g_auBuffer);
                     return 1;
                 }

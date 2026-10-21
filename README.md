@@ -37,7 +37,7 @@ The output is markdown. Redirect it to a file - as there is a lot of information
 | Option | |
 | --- | --- |
 | `-h` | Help (`-h -g`: help for the histogram) |
-| `-g x y` | Histogram of one size (x × y), all tests, instead of the cycle table |
+| `-g W H` | Histogram of one size (W × H), all tests, instead of the cycle table |
 | `-k n` | Sweeps per measurement, 1..287 (default 1) |
 | `-1` | Display and sprites on (default) |
 | `-2` | Display on, sprites off |
@@ -69,7 +69,7 @@ One table per test: columns are the width, rows the height. Each cell is the min
 duration of that command in Z80 cycles. The lowest value that can be measured is 20;
 a 20 means "20 or less".
 
-### Histogram (`-g x y`)
+### Histogram (`-g W H`)
 
 For one size, how often each duration occurs over all start positions. The first
 column is the minimum (as in the cycle table). The counts add up to k × 228.
