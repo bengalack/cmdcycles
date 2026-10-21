@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" font-family="sans-serif">
+<rect x="0" y="0" width="512" height="512" fill="white"/>
+<text x="256.0" y="24.0" font-size="17" text-anchor="middle" font-weight="bold" fill="black">Histogram 8 x 8</text>
+<text x="256.0" y="43.0" font-size="13" text-anchor="middle" font-weight="normal" fill="black">Fill: LMMV</text>
+<text x="256.0" y="59.0" font-size="11" text-anchor="middle" font-weight="normal" fill="black">Mode: Active display</text>
+<line x1="16.0" y1="493.0" x2="34.0" y2="493.0" stroke="#0072B2" stroke-width="3" stroke-opacity="1"/>
+<text x="40.0" y="497.0" font-size="11" text-anchor="start" font-weight="normal" fill="black">OpenMSX Sony HB-F1XD</text>
+<line x1="151.9" y1="74.0" x2="151.9" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="151.9" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">1620</text>
+<line x1="256.1" y1="74.0" x2="256.1" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="256.1" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">1630</text>
+<line x1="360.4" y1="74.0" x2="360.4" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="360.4" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">1640</text>
+<line x1="464.7" y1="74.0" x2="464.7" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="464.7" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">1650</text>
+<line x1="58.0" y1="445.0" x2="496.0" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="1"/>
+<text x="277.0" y="475.0" font-size="11" text-anchor="middle" font-weight="normal" fill="black">Z80 cycles</text>
+<line x1="58.0" y1="445.0" x2="496.0" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="449.0" font-size="10" text-anchor="end" font-weight="normal" fill="black">0</text>
+<line x1="58.0" y1="370.8" x2="496.0" y2="370.8" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="374.8" font-size="10" text-anchor="end" font-weight="normal" fill="black">1</text>
+<line x1="58.0" y1="296.6" x2="496.0" y2="296.6" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="300.6" font-size="10" text-anchor="end" font-weight="normal" fill="black">2</text>
+<line x1="58.0" y1="222.4" x2="496.0" y2="222.4" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="226.4" font-size="10" text-anchor="end" font-weight="normal" fill="black">3</text>
+<line x1="58.0" y1="148.2" x2="496.0" y2="148.2" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="152.2" font-size="10" text-anchor="end" font-weight="normal" fill="black">4</text>
+<line x1="58.0" y1="74.0" x2="496.0" y2="74.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="78.0" font-size="10" text-anchor="end" font-weight="normal" fill="black">5</text>
+<line x1="58.0" y1="74.0" x2="58.0" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="1"/>
+<text x="16.0" y="259.5" font-size="11" text-anchor="middle" font-weight="normal" fill="black" transform="rotate(-90 16.0 259.5)">% of attempts</text>
+<polyline points="63.2,445.0 63.2,314.8 73.6,314.8 73.6,314.8 84.1,314.8 84.1,314.8 94.5,314.8 94.5,314.8 104.9,314.8 104.9,314.8 115.4,314.8 115.4,249.7 125.8,249.7 125.8,184.6 136.2,184.6 136.2,184.6 146.6,184.6 146.6,152.1 157.1,152.1 157.1,152.1 167.5,152.1 167.5,152.1 177.9,152.1 177.9,119.6 188.4,119.6 188.4,119.6 198.8,119.6 198.8,119.6 209.2,119.6 209.2,119.6 219.6,119.6 219.6,119.6 230.1,119.6 230.1,119.6 240.5,119.6 240.5,119.6 250.9,119.6 250.9,119.6 261.4,119.6 261.4,119.6 271.8,119.6 271.8,119.6 282.2,119.6 282.2,184.6 292.6,184.6 292.6,249.7 303.1,249.7 303.1,249.7 313.5,249.7 313.5,249.7 323.9,249.7 323.9,249.7 334.4,249.7 334.4,282.3 344.8,282.3 344.8,347.4 355.2,347.4 355.2,347.4 365.6,347.4 365.6,347.4 376.1,347.4 376.1,379.9 386.5,379.9 386.5,379.9 396.9,379.9 396.9,412.5 407.4,412.5 407.4,412.5 417.8,412.5 417.8,412.5 428.2,412.5 428.2,412.5 438.6,412.5 438.6,412.5 449.1,412.5 449.1,412.5 459.5,412.5 459.5,412.5 469.9,412.5 469.9,412.5 480.4,412.5 480.4,412.5 490.8,412.5 490.8,445.0" fill="none" stroke="#0072B2" stroke-width="1" stroke-opacity="1" stroke-linejoin="round"/>
+</svg>

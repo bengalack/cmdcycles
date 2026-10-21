@@ -3,8 +3,8 @@
 
 @REM set MACHINE=Sanyo_phc-70FD2
 @REM set MACHINE=Philips_NMS_8255
-set MACHINE=Panasonic_FS-A1GT
-@REM set MACHINE=Sony_HB-F1XD
+@REM  set MACHINE=Panasonic_FS-A1ST
+set MACHINE=Sony_HB-F1XD
 @REM set MACHINE=Panasonic_FS-A1FM
 @REM set MACHINE=Al_Alamiah_AX370
 
@@ -21,5 +21,5 @@ set MACHINE=Panasonic_FS-A1GT
 @echo cmdcycle %MACHINE% ^> %SHORTNAME%.md > dska\cc.bat
 @REM @echo cmdcycle %MACHINE% > dska\cc.bat
 
-@REM C:\tools\openmsx21x\openmsx.exe -machine %MACHINE% -ext msxdos2 -ext ram1mb -diska dska/ -command "debug set_watchpoint read_io 0x2E" -command "set throttle off" -command "after time 10 {set throttle on}"
-C:\tools\openmsx21x\openmsx.exe -machine %MACHINE% -ext msxdos2 -ext ram1mb -diska dska/ -command "debug set_watchpoint read_io 0x2E" -command "set throttle off"
+C:\tools\openmsx21x\openmsx.exe -machine %MACHINE% -ext msxdos2 -ext ram1mb -diska dska/ -command "debug set_watchpoint read_io 0x2E" -command "set throttle off" -command "after time 10 {set throttle on}"
+@REM  C:\tools\openmsx21x\openmsx.exe -machine %MACHINE% -ext msxdos2 -ext ram1mb -diska dska/ -command "debug set_watchpoint read_io 0x2E" -command "set throttle off"

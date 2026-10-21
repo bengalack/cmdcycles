@@ -216,9 +216,9 @@ setup_done2:
 ; A line has thickness 0, so we need to decrease both horz and vert extent by 1.
 ; This routine has 16 outs (12 for lines), ie. +16 (12 for lines) outs on some VDPs
 ; MODIFIES: AF, BC, DE, HL
-; void setVDPCmdParamsNI(u8 w, u8 h); A, L 
 ; void setVDPCmdParamsNI(u8 uCmd, u16 oHW); // oWH: COMBO2BYTES.  A, DE 
 
+; Starts with a STOP (R#46 = 0). Colour (R#44) comes from g_uCmdColor (0 = random).
 _setVDPCmdParamsNI::
 
     ; (HEIGHT in E, AND WIDTH in D)
@@ -227,6 +227,11 @@ _setVDPCmdParamsNI::
 
 setVDPCmdParamsNI_asm:: ; call from asm using D: width, E: height, A = CMD (just for testing)
     ; Plan: Put NXL in D, NYL in E, SXL in H, SYL in L
+
+    ld      b,a                 ; STOP any running command first (R#46 = 0), so registers are never
+    xor     a                   ; streamed while a previous command is still executing
+    vdpWriteReg 46
+    ld      a,b
 
 	ld    	c, #VDPSTREAM
 
@@ -310,8 +315,11 @@ line_goes_from_here:
     xor     a
 	out     (VDPSTREAM),a       ;NYH or SHORT-H (43)
 
-    ld a,r                      ; for debugging
-    ; dec     a                   ;set color 255, for visual debugging
+    ld      a,(_g_uCmdColor)    ; 0: random colour (R reg, for visual debugging), else fixed (-g mode)
+    or      a
+    jr      nz,color_is_set
+    ld      a,r
+color_is_set:
 	out     (VDPSTREAM),a       ;COLOR (44)
 
     ld      a,b                 ;sets directions to rightwards and downwards, and MAYBE he MAJ flag for lines
@@ -328,6 +336,7 @@ _getVDPModel::
 	di
 	ld	a,#1
     vdpWriteReg 15              ;select status register 1
+    nop                         ; VDP I/O: >= 15 cycles between accesses (OUT -> IN is 12 without this)
 
 	in	a,(VDPPORT1)
 	and #0b00111110

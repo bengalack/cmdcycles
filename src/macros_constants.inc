@@ -11,6 +11,12 @@
 ; Modifies: A
 ; Set a value in reg number n
 ; Cost: 32 cycles (6 bytes)
+;
+; VDP I/O RULE: two accesses to the VDP ports must be at least 15 cycles apart
+; (start of one I/O cycle to the start of the next). This macro ends with an
+; OUT, so an "in a,(VDPPORT1)" right after it is only 12 cycles away: put e.g.
+; a nop (5) in between. Same for any OUT -> IN or IN -> IN pair written
+; directly after each other.
 ;-------------------------
 .macro vdpWriteReg reg
 	out 	(VDPPORT1),a

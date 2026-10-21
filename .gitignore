@@ -19,7 +19,14 @@ _msxdos2.sys
 dska/*.txt
 dska/*.md
 dska/*Hz.COM
+dska/*.md
+dska/*.MD
+dska/sony*.bat
+dska/panasoni.bat
+dska/philips.bat
 
 temp/**
 
 .vscode/**
+
+__pycache__/
