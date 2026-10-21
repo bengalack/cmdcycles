@@ -1,7 +1,8 @@
 # Comparison of all measured machines, and openMSX
 
 Cycle cost and 8x8 histograms of all machines in `data/`, per command and display mode, next
-to the 8x8 histogram measured in openMSX (`data_openmsx/`, emulated Sony HB-F1XD).
+to the 8x8 histogram measured in openMSX (`data_openmsx/`, emulated Sony HB-F1XD,
+openMSX version 21.0.-556-gae5998524).
 One row per mode: Cycles, Deviation, Histogram 8x8 (real machines), Histogram 8x8 (openMSX).
 Click a chart to open it in full size.
 
