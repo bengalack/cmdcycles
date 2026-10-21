@@ -17,6 +17,9 @@ results are meant as a reference for VDP emulation.
 
 ## Test results
 
+> **All machines agree within one cycle, in every size and every mode.**
+> V9938 or V9958, with or without T9769, PAL or NTSC, with or without clock drift.
+
 Measured on these machines, each in all three modes, with k = 8: the cycle table and
 the 8x8 histogram. The model name links to its cycle table (display and sprites on).
 
@@ -35,10 +38,9 @@ All reports are in [data/](data/). File names: `<machine>-<mode><type>.MD`, with
 (display and sprites on), `2` (no sprites) or `3` (no display), and type `N8` (cycle
 table) or `G888` (8x8 histogram).
 
-All machines agree within one cycle in every size and mode. Which of two neighbouring
-values a machine shows depends on its start-up (the phase between the CPU and VDP
-clocks), not on the VDP type. [comparison.md](comparison.md) shows all commands and modes
-side by side, as charts with one colour per machine.
+Which of two neighbouring values a machine shows depends on its start-up (the phase
+between the CPU and VDP clocks), not on the VDP type. [comparison.md](comparison.md) shows
+all commands and modes side by side, as charts with one colour per machine.
 
 ## How it measures
 
@@ -79,13 +81,15 @@ cmdcycle -3 -k 8 Sony_HB-F1XD > f1xd.md  cycle table, no display, k = 8
 cmdcycle -g 8 8 Sony_HB-F1XD > g88.md    histogram of the 8x8 size
 ```
 
-Run time (NTSC):
+Run time, measured (NTSC; the range is no display ... display with sprites):
 
 | | k = 1 | k = 8 |
 | --- | --- | --- |
-| Cycle table, MSX2/2+ | ~6 min | ~40 min |
-| Cycle table, turbo R | ~20 min | ~2 h |
-| Histogram | ~1–3 min | ~5–20 min |
+| Cycle table | 6–7 min | 45–53 min |
+| Histogram 8x8 | 1–2 min | 5–12 min |
+
+PAL takes about 15% longer. The turbo R takes about 3½ times as long, because it locks
+before every attempt.
 
 ## Results
 
@@ -108,6 +112,12 @@ from it. Right: the 8x8 histogram. More in [comparison.md](comparison.md).
 <a href="img/cycles_active-display_copy-lmmm-teor_shape.svg"><img src="img/cycles_active-display_copy-lmmm-teor_shape.svg" width="30%" alt="Copy: LMMM-TEOR cycles, Active display"></a>&nbsp;&nbsp;<a href="img/cycles_active-display_copy-lmmm-teor_deviation.svg"><img src="img/cycles_active-display_copy-lmmm-teor_deviation.svg" width="30%" alt="Copy: LMMM-TEOR deviation, Active display"></a>&nbsp;&nbsp;<a href="img/hist_8x8_active-display_copy-lmmm-teor.svg"><img src="img/hist_8x8_active-display_copy-lmmm-teor.svg" width="30%" alt="Copy: LMMM-TEOR histogram 8x8, Active display"></a>
 </div>
 
+The charts are SVG files generated from the reports with the Python script
+[gen_charts.py](scripts/gen_charts.py) in the [scripts/](scripts/) folder
+(`python scripts/gen_charts.py --data-dir data --output-dir img`). It needs only Python 3.
+`--png` writes PNG instead, via cairosvg or a headless Chrome/Edge; that part was
+developed and tested on Windows only.
+
 ## Errors
 
 | Message | Meaning |
@@ -117,7 +127,7 @@ from it. Right: the 8x8 histogram. More in [comparison.md](comparison.md).
 
 ## Requirements
 
-- **Run:** MSX2 or higher, MSX-DOS
+- **Run:** MSX2 or higher, MSX-DOS (MSX-DOS2 recommended)
 - **Build:** SDCC 4.2 or higher (tested with 4.5.24), `build.bat`
 
 ## Download
