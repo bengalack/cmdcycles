@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" font-family="sans-serif">
+<rect x="0" y="0" width="512" height="512" fill="white"/>
+<text x="256.0" y="24.0" font-size="17" text-anchor="middle" font-weight="bold" fill="black">Histogram 8 x 8</text>
+<text x="256.0" y="43.0" font-size="13" text-anchor="middle" font-weight="normal" fill="black">Fill: HMMV</text>
+<text x="256.0" y="59.0" font-size="11" text-anchor="middle" font-weight="normal" fill="black">Mode: Active display</text>
+<line x1="16.0" y1="463.0" x2="34.0" y2="463.0" stroke="#0072B2" stroke-width="3" stroke-opacity="1"/>
+<text x="40.0" y="467.0" font-size="11" text-anchor="start" font-weight="normal" fill="black">Panasonic FS-A1FM</text>
+<line x1="256.0" y1="463.0" x2="274.0" y2="463.0" stroke="#E69F00" stroke-width="3" stroke-opacity="1"/>
+<text x="280.0" y="467.0" font-size="11" text-anchor="start" font-weight="normal" fill="black">Panasonic FS-A1ST</text>
+<line x1="16.0" y1="478.0" x2="34.0" y2="478.0" stroke="#009E73" stroke-width="3" stroke-opacity="1"/>
+<text x="40.0" y="482.0" font-size="11" text-anchor="start" font-weight="normal" fill="black">Philips NMS-8245</text>
+<line x1="256.0" y1="478.0" x2="274.0" y2="478.0" stroke="#D55E00" stroke-width="3" stroke-opacity="1"/>
+<text x="280.0" y="482.0" font-size="11" text-anchor="start" font-weight="normal" fill="black">Sanyo PHC-70FD2</text>
+<line x1="16.0" y1="493.0" x2="34.0" y2="493.0" stroke="#CC79A7" stroke-width="3" stroke-opacity="1"/>
+<text x="40.0" y="497.0" font-size="11" text-anchor="start" font-weight="normal" fill="black">Sony HB-F1XD</text>
+<line x1="256.0" y1="493.0" x2="274.0" y2="493.0" stroke="#56B4E9" stroke-width="3" stroke-opacity="1"/>
+<text x="280.0" y="497.0" font-size="11" text-anchor="start" font-weight="normal" fill="black">Sony HB-F1XDJ</text>
+<line x1="79.9" y1="74.0" x2="79.9" y2="415.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="79.9" y="429.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">790</text>
+<line x1="189.4" y1="74.0" x2="189.4" y2="415.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="189.4" y="429.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">795</text>
+<line x1="298.9" y1="74.0" x2="298.9" y2="415.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="298.9" y="429.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">800</text>
+<line x1="408.4" y1="74.0" x2="408.4" y2="415.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="408.4" y="429.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">805</text>
+<line x1="58.0" y1="415.0" x2="496.0" y2="415.0" stroke="black" stroke-width="1" stroke-opacity="1"/>
+<text x="277.0" y="445.0" font-size="11" text-anchor="middle" font-weight="normal" fill="black">Z80 cycles</text>
+<line x1="58.0" y1="415.0" x2="496.0" y2="415.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="419.0" font-size="10" text-anchor="end" font-weight="normal" fill="black">0</text>
+<line x1="58.0" y1="346.8" x2="496.0" y2="346.8" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="350.8" font-size="10" text-anchor="end" font-weight="normal" fill="black">2</text>
+<line x1="58.0" y1="278.6" x2="496.0" y2="278.6" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="282.6" font-size="10" text-anchor="end" font-weight="normal" fill="black">4</text>
+<line x1="58.0" y1="210.4" x2="496.0" y2="210.4" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="214.4" font-size="10" text-anchor="end" font-weight="normal" fill="black">6</text>
+<line x1="58.0" y1="142.2" x2="496.0" y2="142.2" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="146.2" font-size="10" text-anchor="end" font-weight="normal" fill="black">8</text>
+<line x1="58.0" y1="74.0" x2="496.0" y2="74.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="78.0" font-size="10" text-anchor="end" font-weight="normal" fill="black">10</text>
+<line x1="58.0" y1="74.0" x2="58.0" y2="415.0" stroke="black" stroke-width="1" stroke-opacity="1"/>
+<text x="16.0" y="244.5" font-size="11" text-anchor="middle" font-weight="normal" fill="black" transform="rotate(-90 16.0 244.5)">% of attempts</text>
+<polyline points="69.0,415.0 69.0,385.1 90.8,385.1 90.8,325.3 112.8,325.3 112.8,175.7 134.6,175.7 134.6,175.7 156.6,175.7 156.6,175.7 178.4,175.7 178.4,175.7 200.3,175.7 200.3,160.7 222.2,160.7 222.2,145.8 244.2,145.8 244.2,100.9 266.0,100.9 266.0,100.9 288.0,100.9 288.0,100.9 309.9,100.9 309.9,160.7 331.8,160.7 331.8,235.5 353.7,235.5 353.7,325.3 375.6,325.3 375.6,325.3 397.4,325.3 397.4,325.3 419.3,325.3 419.3,340.2 441.2,340.2 441.2,355.2 463.2,355.2 463.2,385.1 485.1,385.1 485.1,415.0" fill="none" stroke="#0072B2" stroke-width="5" stroke-opacity="1" stroke-linejoin="round"/>
+<polyline points="69.0,415.0 69.0,401.9 90.8,401.9 90.8,327.1 112.8,327.1 112.8,196.3 134.6,196.3 134.6,192.5 156.6,192.5 156.6,194.4 178.4,194.4 178.4,142.1 200.3,142.1 200.3,173.8 222.2,173.8 222.2,153.3 244.2,153.3 244.2,106.5 266.0,106.5 266.0,95.3 288.0,95.3 288.0,100.9 309.9,100.9 309.9,136.4 331.8,136.4 331.8,222.4 353.7,222.4 353.7,327.1 375.6,327.1 375.6,327.1 397.4,327.1 397.4,319.7 419.3,319.7 419.3,319.7 441.2,319.7 441.2,368.3 463.2,368.3 463.2,370.1 485.1,370.1 485.1,415.0" fill="none" stroke="#E69F00" stroke-width="4.2" stroke-opacity="1" stroke-linejoin="round"/>
+<polyline points="69.0,415.0 69.0,385.1 90.8,385.1 90.8,340.2 112.8,340.2 112.8,175.7 134.6,175.7 134.6,175.7 156.6,175.7 156.6,175.7 178.4,175.7 178.4,175.7 200.3,175.7 200.3,160.7 222.2,160.7 222.2,145.8 244.2,145.8 244.2,100.9 266.0,100.9 266.0,100.9 288.0,100.9 288.0,100.9 309.9,100.9 309.9,145.8 331.8,145.8 331.8,235.5 353.7,235.5 353.7,325.3 375.6,325.3 375.6,325.3 397.4,325.3 397.4,325.3 419.3,325.3 419.3,340.2 441.2,340.2 441.2,355.2 463.2,355.2 463.2,385.1 485.1,385.1 485.1,415.0" fill="none" stroke="#009E73" stroke-width="3.4" stroke-opacity="1" stroke-linejoin="round"/>
+<polyline points="69.0,415.0 69.0,385.1 90.8,385.1 90.8,340.2 112.8,340.2 112.8,175.7 134.6,175.7 134.6,175.7 156.6,175.7 156.6,175.7 178.4,175.7 178.4,175.7 200.3,175.7 200.3,160.7 222.2,160.7 222.2,145.8 244.2,145.8 244.2,100.9 266.0,100.9 266.0,100.9 288.0,100.9 288.0,100.9 309.9,100.9 309.9,145.8 331.8,145.8 331.8,235.5 353.7,235.5 353.7,325.3 375.6,325.3 375.6,325.3 397.4,325.3 397.4,325.3 419.3,325.3 419.3,340.2 441.2,340.2 441.2,355.2 463.2,355.2 463.2,385.1 485.1,385.1 485.1,415.0" fill="none" stroke="#D55E00" stroke-width="2.6" stroke-opacity="1" stroke-linejoin="round"/>
+<polyline points="90.8,415.0 90.8,325.3 112.8,325.3 112.8,235.5 134.6,235.5 134.6,175.7 156.6,175.7 156.6,175.7 178.4,175.7 178.4,175.7 200.3,175.7 200.3,160.7 222.2,160.7 222.2,160.7 244.2,160.7 244.2,115.9 266.0,115.9 266.0,100.9 288.0,100.9 288.0,100.9 309.9,100.9 309.9,130.8 331.8,130.8 331.8,190.7 353.7,190.7 353.7,325.3 375.6,325.3 375.6,325.3 397.4,325.3 397.4,325.3 419.3,325.3 419.3,325.3 441.2,325.3 441.2,355.2 463.2,355.2 463.2,355.2 485.1,355.2 485.1,415.0" fill="none" stroke="#CC79A7" stroke-width="1.8" stroke-opacity="1" stroke-linejoin="round"/>
+<polyline points="90.8,415.0 90.8,325.3 112.8,325.3 112.8,235.5 134.6,235.5 134.6,175.7 156.6,175.7 156.6,175.7 178.4,175.7 178.4,175.7 200.3,175.7 200.3,160.7 222.2,160.7 222.2,160.7 244.2,160.7 244.2,115.9 266.0,115.9 266.0,100.9 288.0,100.9 288.0,100.9 309.9,100.9 309.9,130.8 331.8,130.8 331.8,190.7 353.7,190.7 353.7,325.3 375.6,325.3 375.6,325.3 397.4,325.3 397.4,325.3 419.3,325.3 419.3,325.3 441.2,325.3 441.2,355.2 463.2,355.2 463.2,355.2 485.1,355.2 485.1,415.0" fill="none" stroke="#56B4E9" stroke-width="1" stroke-opacity="1" stroke-linejoin="round"/>
+</svg>

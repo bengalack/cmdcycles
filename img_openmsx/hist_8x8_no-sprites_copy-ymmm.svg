@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" font-family="sans-serif">
+<rect x="0" y="0" width="512" height="512" fill="white"/>
+<text x="256.0" y="24.0" font-size="17" text-anchor="middle" font-weight="bold" fill="black">Histogram 8 x 8</text>
+<text x="256.0" y="43.0" font-size="13" text-anchor="middle" font-weight="normal" fill="black">Copy: YMMM</text>
+<text x="256.0" y="59.0" font-size="11" text-anchor="middle" font-weight="normal" fill="black">Mode: No sprites</text>
+<line x1="16.0" y1="493.0" x2="34.0" y2="493.0" stroke="#0072B2" stroke-width="3" stroke-opacity="1"/>
+<text x="40.0" y="497.0" font-size="11" text-anchor="start" font-weight="normal" fill="black">OpenMSX Sony HB-F1XD</text>
+<line x1="102.5" y1="74.0" x2="102.5" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="102.5" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">860</text>
+<line x1="176.8" y1="74.0" x2="176.8" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="176.8" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">870</text>
+<line x1="251.0" y1="74.0" x2="251.0" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="251.0" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">880</text>
+<line x1="325.3" y1="74.0" x2="325.3" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="325.3" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">890</text>
+<line x1="399.5" y1="74.0" x2="399.5" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="399.5" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">900</text>
+<line x1="473.7" y1="74.0" x2="473.7" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="473.7" y="459.0" font-size="10" text-anchor="middle" font-weight="normal" fill="black">910</text>
+<line x1="58.0" y1="445.0" x2="496.0" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="1"/>
+<text x="277.0" y="475.0" font-size="11" text-anchor="middle" font-weight="normal" fill="black">Z80 cycles</text>
+<line x1="58.0" y1="445.0" x2="496.0" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="449.0" font-size="10" text-anchor="end" font-weight="normal" fill="black">0</text>
+<line x1="58.0" y1="370.8" x2="496.0" y2="370.8" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="374.8" font-size="10" text-anchor="end" font-weight="normal" fill="black">1</text>
+<line x1="58.0" y1="296.6" x2="496.0" y2="296.6" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="300.6" font-size="10" text-anchor="end" font-weight="normal" fill="black">2</text>
+<line x1="58.0" y1="222.4" x2="496.0" y2="222.4" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="226.4" font-size="10" text-anchor="end" font-weight="normal" fill="black">3</text>
+<line x1="58.0" y1="148.2" x2="496.0" y2="148.2" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="152.2" font-size="10" text-anchor="end" font-weight="normal" fill="black">4</text>
+<line x1="58.0" y1="74.0" x2="496.0" y2="74.0" stroke="black" stroke-width="1" stroke-opacity="0.12"/>
+<text x="52.0" y="78.0" font-size="10" text-anchor="end" font-weight="normal" fill="black">5</text>
+<line x1="58.0" y1="74.0" x2="58.0" y2="445.0" stroke="black" stroke-width="1" stroke-opacity="1"/>
+<text x="16.0" y="259.5" font-size="11" text-anchor="middle" font-weight="normal" fill="black" transform="rotate(-90 16.0 259.5)">% of attempts</text>
+<polyline points="61.7,445.0 61.7,412.5 69.1,412.5 69.1,379.9 76.6,379.9 76.6,379.9 84.0,379.9 84.0,379.9 91.4,379.9 91.4,282.3 98.8,282.3 98.8,152.1 106.3,152.1 106.3,87.0 113.7,87.0 113.7,87.0 121.1,87.0 121.1,87.0 128.5,87.0 128.5,87.0 135.9,87.0 135.9,87.0 143.4,87.0 143.4,119.6 150.8,119.6 150.8,119.6 158.2,119.6 158.2,119.6 165.6,119.6 165.6,119.6 173.1,119.6 173.1,249.7 180.5,249.7 180.5,347.4 187.9,347.4 187.9,379.9 195.3,379.9 195.3,379.9 202.8,379.9 202.8,379.9 210.2,379.9 210.2,379.9 217.6,379.9 217.6,379.9 225.0,379.9 225.0,379.9 232.5,379.9 232.5,379.9 239.9,379.9 239.9,379.9 247.3,379.9 247.3,379.9 254.7,379.9 254.7,379.9 262.2,379.9 262.2,379.9 269.6,379.9 269.6,379.9 277.0,379.9 277.0,379.9 284.4,379.9 284.4,379.9 291.8,379.9 291.8,379.9 299.3,379.9 299.3,379.9 306.7,379.9 306.7,379.9 314.1,379.9 314.1,379.9 321.5,379.9 321.5,379.9 329.0,379.9 329.0,379.9 336.4,379.9 336.4,379.9 343.8,379.9 343.8,379.9 351.2,379.9 351.2,379.9 358.7,379.9 358.7,379.9 366.1,379.9 366.1,379.9 373.5,379.9 373.5,379.9 380.9,379.9 380.9,379.9 388.4,379.9 388.4,379.9 395.8,379.9 395.8,379.9 403.2,379.9 403.2,379.9 410.6,379.9 410.6,314.8 418.1,314.8 418.1,314.8 425.5,314.8 425.5,314.8 432.9,314.8 432.9,314.8 440.3,314.8 440.3,314.8 447.7,314.8 447.7,314.8 455.2,314.8 455.2,314.8 462.6,314.8 462.6,314.8 470.0,314.8 470.0,314.8 477.4,314.8 477.4,314.8 484.9,314.8 484.9,347.4 492.3,347.4 492.3,445.0" fill="none" stroke="#0072B2" stroke-width="1" stroke-opacity="1" stroke-linejoin="round"/>
+</svg>

@@ -1,4 +1,4 @@
-# cmdcycles | report V9938/V9958 command durations w/histogram
+# cmdcycles | report V9938 command time w/histogram
 
 ## What it does
 
@@ -9,10 +9,36 @@ results are meant as a reference for VDP emulation.
 - Measured in the active display area, under three conditions, because display and
   sprites [change the timing](https://openmsx.org/vdp-vram-timing/vdp-timing.html):
   display + sprites, display without sprites, no display.
-- Systems with a T9769 (MSX2+/turbo R) [add a wait cycle](https://www.msx.org/forum/msx-talk/development/extra-vdp-wait-cycles?page=0)
+- Systems with a T9769 MSX engine (MSX2+, turbo R and some MSX2 such as the FS-A1FM)
+  [add a wait cycle](https://www.msx.org/forum/msx-talk/development/extra-vdp-wait-cycles?page=0)
   to every VDP I/O. This is detected, and the results include that +1 so they can be
   compared directly with other systems.
 - Works on drifting CPU/VDP clocks too (turbo R).
+
+## Test results
+
+Measured on these machines, each in all three modes, with k = 8: the cycle table and
+the 8x8 histogram. The model name links to its cycle table (display and sprites on).
+
+| Model | PAL | Clock drift | V9938 | V9958 | T9769 |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| [Sony HB-F1XD](data/S-1N8.MD) | | | ✓ | | |
+| [Sony HB-F1XDJ](data/S2-1N8.MD) | | | | ✓ | |
+| [Philips NMS-8245](data/N-1N8.MD) | ✓ | | ✓ | | |
+| [Panasonic FS-A1FM](data/PF-1N8.MD) | | | ✓ | | ✓ |
+| [Sanyo PHC-70FD2](data/SY-1N8.MD) | | | | ✓ | ✓ |
+| [Panasonic FS-A1ST](data/P-1N8.MD) (turbo R) | | ✓ | | ✓ | ✓ |
+
+*Clock drift*: CPU and VDP run from separate clocks, which drift apart.
+
+All reports are in [data/](data/). File names: `<machine>-<mode><type>.MD`, with mode `1`
+(display and sprites on), `2` (no sprites) or `3` (no display), and type `N8` (cycle
+table) or `G888` (8x8 histogram).
+
+All machines agree within one cycle in every size and mode. Which of two neighbouring
+values a machine shows depends on its start-up (the phase between the CPU and VDP
+clocks), not on the VDP type. [comparison.md](comparison.md) shows all commands and modes
+side by side, as charts with one colour per machine.
 
 ## How it measures
 
@@ -74,9 +100,13 @@ a 20 means "20 or less".
 For one size, how often each duration occurs over all start positions. The first
 column is the minimum (as in the cycle table). The counts add up to k × 228.
 
-Example: <!-- TODO: model name, command line -->
+Example: Copy: LMMM-TEOR with display and sprites on, all machines. Left: the cycle
+table as a chart (most common value of all machines). Middle: each machine's deviation
+from it. Right: the 8x8 histogram. More in [comparison.md](comparison.md).
 
-<!-- TODO: insert the generated histograms (all 6 tests) from a real model -->
+<div align="center">
+<a href="img/cycles_active-display_copy-lmmm-teor_shape.svg"><img src="img/cycles_active-display_copy-lmmm-teor_shape.svg" width="30%" alt="Copy: LMMM-TEOR cycles, Active display"></a>&nbsp;&nbsp;<a href="img/cycles_active-display_copy-lmmm-teor_deviation.svg"><img src="img/cycles_active-display_copy-lmmm-teor_deviation.svg" width="30%" alt="Copy: LMMM-TEOR deviation, Active display"></a>&nbsp;&nbsp;<a href="img/hist_8x8_active-display_copy-lmmm-teor.svg"><img src="img/hist_8x8_active-display_copy-lmmm-teor.svg" width="30%" alt="Copy: LMMM-TEOR histogram 8x8, Active display"></a>
+</div>
 
 ## Errors
 
