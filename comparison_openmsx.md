@@ -9,6 +9,7 @@ Click a chart to open it in full size.
 - **Cycles**: duration of each size (width 1..8, one line per height), most common value of all machines.
 - **Deviation**: each machine's value minus that most common value, per size.
 - **Histogram 8x8**: % of attempts against duration, one curve per machine.
+    - Note a unstable, noisy line when there is clock drift (Turbo R)
 
 Generated with `python scripts/gen_charts.py --data-dir data --output-dir img` and
 `python scripts/gen_charts.py --data-dir data_openmsx --output-dir img_openmsx`.

@@ -50,7 +50,7 @@ measured with all k × 228 attempts. The number of successes per *d* rises from 
 k × 228. The histogram shows the increase per *d*: how many start positions finish at
 exactly that duration.
 
-The shape is plateaus and steps, not a bell curve. Counts that are multiples of k
+The shape is plateaus and steps. Counts that are multiples of k
 come from start positions that behave the same in every sweep.
 
 ## T9769 systems: +1 per VDP I/O
@@ -71,10 +71,12 @@ this. Then every attempt gets its own lock and an explicit wait to its start
 position, instead of running back to back. It is slower (about 3×), but drift can
 only act within one attempt.
 
-The option `-r` forces this path on any system, to test it on emulators
-(which never drift).
+The option `-r` forces this path on any system: to test it on an emulator that doesn't
+emulate the drift, or to measure with a lock per attempt on any machine.
 
 ## VDP I/O spacing
 
-The VDP needs at least 15 Z80 cycles between two accesses to its ports. All timed
+The VDP needs at least 15 Z80 cycles between two accesses to its ports when the display
+is active (see
+[VRAM access timing](https://aoineko.org/msxgl/index.php?title=VRAM_access_timing)). All timed
 code keeps to that.
